@@ -1,0 +1,29 @@
+name: Saphahemailservices Automation
+
+# Trigger options
+on:
+  workflow_dispatch:      # manual trigger
+  schedule:
+    - cron: "0 * * * *"   # optional: run every hour
+
+jobs:
+  send-emails:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run email service
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: node saphahemailservices.js
