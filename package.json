@@ -1,0 +1,12 @@
+{
+  "name": "saphahemailservices",
+  "version": "1.0.0",
+  "description": "Internal serverless email service for SCS and DOTS consoles",
+  "main": "send-email.js",
+  "scripts": {
+    "start": "node send-email.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.8"
+  }
+}
