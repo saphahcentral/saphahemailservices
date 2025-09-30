@@ -1,24 +1,23 @@
 name: Saphahemailservices Automation
 
 on:
-  workflow_dispatch:      # manual trigger
+  workflow_dispatch:      # allow manual run
   schedule:
-    - cron: "0 * * * *"   # runs every hour
+    - cron: "0 * * * *"   # run hourly
+    - cron: "0 22 * * *"  # 00:00 SAST (22:00 UTC) for daily summary
 
 jobs:
-  send-emails:
+  email-job:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          persist-credentials: true  # needed for committing back
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - name: Install dependencies
         run: npm install
@@ -28,12 +27,29 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
         run: |
-          node send-email.js
+          echo "[$(date -u)] Starting email run..." >> logs/email-log-$(date +%Y-%m-%d).txt
+          node send-email.js || echo "[$(date -u)] No emails sent (or skipped) – continuing." >> logs/email-log-$(date +%Y-%m-%d).txt
 
-      - name: Commit sent emails
+      - name: Commit sent emails + logs
         run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "actions@github.com"
-          git add sent/*
-          git commit -m "Add sent email copy [ci skip]" || echo "No new emails to commit"
+          git add sent/* logs/*
+          git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
           git push origin main
+
+      - name: Send daily summary
+        if: github.event.schedule == '0 22 * * *'
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: |
+          SUMMARY="logs/email-log-$(date +%Y-%m-%d).txt"
+          if [ -f "$SUMMARY" ]; then
+            node send-email.js \
+              SUBJECT="Daily Email Summary $(date +%Y-%m-%d)" \
+              BODY="$(cat $SUMMARY)" \
+              RECIPIENT="${{ secrets.SMTP_USER }}"
+          else
+            echo "No log found for today. Skipping summary."
+          fi
