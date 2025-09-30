@@ -1,65 +1,97 @@
 // send-email.js
-// Saphahemailservices: send email and save copy to sent/
+const fs = require('fs');
+const path = require('path');
+const nodemailer = require('nodemailer');
 
-const fs = require("fs");
-const path = require("path");
-const nodemailer = require("nodemailer");
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
 
-(async function main() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const to = process.env.RECIPIENT || user;
-  const subject = process.env.SUBJECT || "Saphahemailservices: Automated message";
-  const text = process.env.BODY || "This is an automated message from saphahemailservices.";
+if (!SMTP_USER || !SMTP_PASS) {
+  console.error("Missing SMTP_USER or SMTP_PASS in environment.");
+  process.exit(1);
+}
 
-  if (!user || !pass) {
-    console.error("Missing credentials: SMTP_USER and SMTP_PASS must be set as GitHub Secrets.");
-    process.exit(2);
-  }
+// Create transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // works with Gmail + app password
+  auth: {
+    user: SMTP_USER,
+    pass: SMTP_PASS,
+  },
+});
 
-  if (!to) {
-    console.error("No recipient available. Set RECIPIENT or ensure SMTP_USER is set.");
-    process.exit(3);
-  }
+// Ensure dirs exist
+const draftsDir = path.join(__dirname, 'drafts');
+const sentDir = path.join(__dirname, 'sent');
+const logsDir = path.join(__dirname, 'logs');
+[draftsDir, sentDir, logsDir].forEach(dir => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+});
 
-  // Ensure sent folder exists
-  const sentDir = path.join(__dirname, "sent");
-  if (!fs.existsSync(sentDir)) fs.mkdirSync(sentDir);
+// Daily log file
+const logFile = path.join(logsDir, `email-log-${new Date().toISOString().slice(0,10)}.txt`);
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  fs.appendFileSync(logFile, line);
+  console.log(line.trim());
+}
 
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: { user, pass },
+// Handle special case: summary mode
+if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
+  const mailOptions = {
+    from: SMTP_USER,
+    to: process.env.RECIPIENT,
+    subject: process.env.SUBJECT,
+    text: process.env.BODY,
+  };
+
+  transporter.sendMail(mailOptions, (err, info) => {
+    if (err) {
+      log(`❌ Failed to send summary: ${err.message}`);
+      process.exit(0); // no failure
+    } else {
+      log(`✅ Sent daily summary to ${process.env.RECIPIENT}`);
+      process.exit(0);
+    }
   });
+  return;
+}
 
-  try {
-    console.log("Verifying transporter...");
-    await transporter.verify();
-    console.log("Transporter verified. Sending email to:", to);
-
-    const info = await transporter.sendMail({
-      from: `"Saphah Central Services" <${user}>`,
-      to,
-      subject,
-      text,
-    });
-
-    console.log("✅ Email sent. MessageId:", info.messageId);
-
-    // Save copy to sent folder
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = path.join(sentDir, `email-${timestamp}.txt`);
-    const content = `To: ${to}\nFrom: ${user}\nSubject: ${subject}\n\n${text}`;
-    fs.writeFileSync(filename, content, "utf-8");
-
-    console.log("Saved sent email copy to:", filename);
+// Process drafts
+fs.readdir(draftsDir, (err, files) => {
+  if (err) {
+    log(`Error reading drafts folder: ${err.message}`);
     process.exit(0);
-  } catch (err) {
-    console.error("❌ Email sending failed:");
-    console.error(err.stack || err);
-    if (err.code) console.error("Error code:", err.code);
-    if (err.response) console.error("SMTP response:", err.response);
-    process.exit(1);
   }
-})();
+
+  if (files.length === 0) {
+    log("No drafts found. Nothing to send.");
+    process.exit(0);
+  }
+
+  files.forEach(file => {
+    const draftPath = path.join(draftsDir, file);
+    const content = fs.readFileSync(draftPath, 'utf-8');
+    const [firstLine, ...rest] = content.split('\n');
+    const subject = firstLine.replace(/^Subject:\s*/i, '').trim();
+    const body = rest.join('\n').trim();
+
+    const mailOptions = {
+      from: SMTP_USER,
+      to: SMTP_USER, // or replace with a subscriber list service later
+      subject: subject || "No Subject",
+      text: body || "(empty message)",
+    };
+
+    transporter.sendMail(mailOptions, (err, info) => {
+      if (err) {
+        log(`❌ Failed to send "${file}": ${err.message}`);
+      } else {
+        log(`✅ Sent "${file}" successfully to ${mailOptions.to}`);
+        // move file to sent/
+        const sentPath = path.join(sentDir, file);
+        fs.renameSync(draftPath, sentPath);
+      }
+    });
+  });
+});
