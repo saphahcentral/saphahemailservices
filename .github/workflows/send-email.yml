@@ -1,27 +1,57 @@
+# ===================================================================
+#  SAPHAHEMAILSERVICES AUTOMATION WORKFLOW
+#  File: .github/workflows/send-email.yml
+#  Purpose: Runs automated email sends + daily summary.
+#  Author: Migration Fix – Final Revision
+# ===================================================================
+
 name: Saphahemailservices Automation
 
 on:
-  workflow_dispatch:      # allow manual run
+  # Allows you to trigger this workflow manually from GitHub Actions tab
+  workflow_dispatch:
+
+  # Scheduled runs (CRON format)
   schedule:
-    - cron: "0 * * * *"   # run hourly
-    - cron: "0 22 * * *"  # 00:00 SAST (22:00 UTC) for daily summary
+    - cron: "0 * * * *"     # Every hour (for normal email runs)
+    - cron: "0 22 * * *"    # Daily summary at 00:00 SAST (22:00 UTC)
 
 jobs:
   email-job:
     runs-on: ubuntu-latest
 
     steps:
+      # -------------------------------------------------------------
+      # STEP 1 – CHECKOUT REPOSITORY
+      # -------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -------------------------------------------------------------
+      # STEP 2 – SETUP NODE.JS ENVIRONMENT
+      # -------------------------------------------------------------
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
+      # -------------------------------------------------------------
+      # STEP 3 – INSTALL DEPENDENCIES
+      # -------------------------------------------------------------
       - name: Install dependencies
         run: npm install
 
+      # -------------------------------------------------------------
+      # STEP 4 – ENSURE LOG/SENT DIRECTORIES EXIST
+      # Prevents errors if the folders are missing
+      # -------------------------------------------------------------
+      - name: Ensure directories exist
+        run: mkdir -p logs sent
+
+      # -------------------------------------------------------------
+      # STEP 5 – RUN EMAIL SERVICE
+      # Executes the Node script to send queued emails
+      # -------------------------------------------------------------
       - name: Run email service
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -30,26 +60,38 @@ jobs:
           echo "[$(date -u)] Starting email run..." >> logs/email-log-$(date +%Y-%m-%d).txt
           node send-email.js || echo "[$(date -u)] No emails sent (or skipped) – continuing." >> logs/email-log-$(date +%Y-%m-%d).txt
 
+      # -------------------------------------------------------------
+      # STEP 6 – COMMIT SENT EMAILS AND LOGS
+      # Updates repository with new logs or sent files
+      # -------------------------------------------------------------
       - name: Commit sent emails + logs
         run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "actions@github.com"
-          git add sent/* logs/*
+          git add -A
           git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
           git push origin main
 
+      # -------------------------------------------------------------
+      # STEP 7 – SEND DAILY SUMMARY
+      # This runs only at 22:00 UTC (00:00 SAST)
+      # -------------------------------------------------------------
       - name: Send daily summary
-        if: github.event.schedule == '0 22 * * *'
+        if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 22')
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
         run: |
-          SUMMARY="logs/email-log-$(date +%Y-%m-%d).txt"
+          # Adjust timestamp to SAST (+2 hours)
+          SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
+
           if [ -f "$SUMMARY" ]; then
-            node send-email.js \
-              SUBJECT="Daily Email Summary $(date +%Y-%m-%d)" \
-              BODY="$(cat $SUMMARY)" \
-              RECIPIENT="${{ secrets.SMTP_USER }}"
+            SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
+            BODY="$(cat $SUMMARY)"
+            RECIPIENT="${{ secrets.SMTP_USER }}"
+
+            echo "Sending daily summary to $RECIPIENT..."
+            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node send-email.js
           else
             echo "No log found for today. Skipping summary."
           fi
