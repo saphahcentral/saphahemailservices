@@ -1,9 +1,7 @@
-// firebase-admin.js
+// saphahemailservices/main/firebase-admin.js
 import admin from "firebase-admin";
-import { readFileSync } from "fs";
 
-const serviceAccountPath = process.env.FIREBASE_ADMIN_KEY_PATH || "./serviceAccountKey.json";
-const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, "utf8"));
+const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_KEY);
 
 if (!admin.apps.length) {
   admin.initializeApp({
