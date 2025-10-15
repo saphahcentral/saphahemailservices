@@ -1,14 +1,14 @@
 # ===================================================================
 #  SAPHAHEMAILSERVICES AUTOMATION WORKFLOW
 #  File: .github/workflows/send-email.yml
-#  Purpose: Runs automated email sends + daily summary.
-#  Author: Migration Fix – Final Revision
+#  Purpose: Runs automated email sends + daily summary + Firestore sync
+#  Author: Migration Fix – Final Revision (Firebase-Integrated)
 # ===================================================================
 
 name: Saphahemailservices Automation
 
 on:
-  # Allows you to trigger this workflow manually from GitHub Actions tab
+  # Allows manual triggering from GitHub Actions tab
   workflow_dispatch:
 
   # Scheduled runs (CRON format)
@@ -43,26 +43,25 @@ jobs:
 
       # -------------------------------------------------------------
       # STEP 4 – ENSURE LOG/SENT DIRECTORIES EXIST
-      # Prevents errors if the folders are missing
       # -------------------------------------------------------------
       - name: Ensure directories exist
         run: mkdir -p logs sent
 
       # -------------------------------------------------------------
       # STEP 5 – RUN EMAIL SERVICE
-      # Executes the Node script to send queued emails
+      # Includes Firebase access for subscriber data
       # -------------------------------------------------------------
       - name: Run email service
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          FIREBASE_ADMIN_KEY: ${{ secrets.FIREBASE_ADMIN_KEY }}
         run: |
           echo "[$(date -u)] Starting email run..." >> logs/email-log-$(date +%Y-%m-%d).txt
           node send-email.js || echo "[$(date -u)] No emails sent (or skipped) – continuing." >> logs/email-log-$(date +%Y-%m-%d).txt
 
       # -------------------------------------------------------------
       # STEP 6 – COMMIT SENT EMAILS AND LOGS
-      # Updates repository with new logs or sent files
       # -------------------------------------------------------------
       - name: Commit sent emails + logs
         run: |
@@ -74,15 +73,15 @@ jobs:
 
       # -------------------------------------------------------------
       # STEP 7 – SEND DAILY SUMMARY
-      # This runs only at 22:00 UTC (00:00 SAST)
+      # Runs only at 22:00 UTC (00:00 SAST)
       # -------------------------------------------------------------
       - name: Send daily summary
         if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 22')
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          FIREBASE_ADMIN_KEY: ${{ secrets.FIREBASE_ADMIN_KEY }}
         run: |
-          # Adjust timestamp to SAST (+2 hours)
           SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
 
           if [ -f "$SUMMARY" ]; then
