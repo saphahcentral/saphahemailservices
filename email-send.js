@@ -21,7 +21,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // Ensure dirs exist
-const draftsDir = path.join(__dirname, 'drafts');
+const draftsDir = path.join(__dirname, 'funnel');
 const sentDir = path.join(__dirname, 'sent');
 const logsDir = path.join(__dirname, 'logs');
 [draftsDir, sentDir, logsDir].forEach(dir => {
