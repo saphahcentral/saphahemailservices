@@ -1,7 +1,7 @@
 name: Saphahemailservices Automation
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:    # manual trigger
   schedule:
     - cron: "0 * * * *"     # every hour
     - cron: "0 22 * * *"    # daily summary at 00:00 SAST
@@ -11,26 +11,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # -------------------------------------------------------------
+      # STEP 1 – CHECKOUT REPOSITORY
+      # -------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # -------------------------------------------------------------
+      # STEP 2 – SETUP NODE.JS ENVIRONMENT
+      # -------------------------------------------------------------
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
+      # -------------------------------------------------------------
+      # STEP 3 – INSTALL DEPENDENCIES
+      # -------------------------------------------------------------
       - name: Install dependencies
         run: npm install
 
+      # -------------------------------------------------------------
+      # STEP 4 – ENSURE LOG/SENT DIRECTORIES EXIST
+      # -------------------------------------------------------------
       - name: Ensure directories exist
-        run: mkdir -p saphahemailservices/logs saphahemailservices/sent
+        run: |
+          mkdir -p saphahemailservices/logs
+          mkdir -p saphahemailservices/sent
 
+      # -------------------------------------------------------------
+      # STEP 5 – RUN EMAIL SERVICE
+      # -------------------------------------------------------------
       - name: Run email service
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-        run: node saphahemailservices/email-send.js
+        run: node ./saphahemailservices/email-send.js
 
+      # -------------------------------------------------------------
+      # STEP 6 – COMMIT SENT EMAILS AND LOGS
+      # -------------------------------------------------------------
       - name: Commit sent emails + logs
         run: |
           git config --local user.name "GitHub Action"
