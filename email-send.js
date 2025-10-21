@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
 
+// ---------------------------
+// ENVIRONMENT VARIABLES
+// ---------------------------
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 
@@ -11,32 +14,43 @@ if (!SMTP_USER || !SMTP_PASS) {
   process.exit(1);
 }
 
-// Create transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail', // works with Gmail + app password
-  auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
-  },
-});
+// ---------------------------
+// PATHS
+// ---------------------------
+const baseDir   = __dirname;           // saphahemailservices/
+const funnelDir = path.join(baseDir, 'funnel');
+const sentDir   = path.join(baseDir, 'sent');
+const logsDir   = path.join(baseDir, 'logs');
 
-// Ensure dirs exist
-const draftsDir = path.join(__dirname, 'funnel');
-const sentDir = path.join(__dirname, 'sent');
-const logsDir = path.join(__dirname, 'logs');
-[draftsDir, sentDir, logsDir].forEach(dir => {
+[funnelDir, sentDir, logsDir].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
-// Daily log file
 const logFile = path.join(logsDir, `email-log-${new Date().toISOString().slice(0,10)}.txt`);
 function log(msg) {
-  const line = `[${new Date().toISOString()}] ${msg}\n`;
-  fs.appendFileSync(logFile, line);
-  console.log(line.trim());
+  fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${msg}\n`);
+  console.log(msg);
 }
 
-// Handle special case: summary mode
+// ---------------------------
+// CREATE TRANSPORTER
+// ---------------------------
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: { user: SMTP_USER, pass: SMTP_PASS },
+});
+
+// ---------------------------
+// HELPER: Check if today is weekend
+// ---------------------------
+function isWeekend() {
+  const day = new Date().getDay(); // 0=Sunday, 6=Saturday
+  return day === 0 || day === 6;
+}
+
+// ---------------------------
+// HANDLE MANUAL SUMMARY MODE
+// ---------------------------
 if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
   const mailOptions = {
     from: SMTP_USER,
@@ -48,39 +62,69 @@ if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
   transporter.sendMail(mailOptions, (err, info) => {
     if (err) {
       log(`❌ Failed to send summary: ${err.message}`);
-      process.exit(0); // no failure
     } else {
       log(`✅ Sent daily summary to ${process.env.RECIPIENT}`);
-      process.exit(0);
     }
+    process.exit(0);
   });
   return;
 }
 
-// Process drafts
-fs.readdir(draftsDir, (err, files) => {
+// ---------------------------
+// READ HEADER + FOOTER
+// ---------------------------
+let header = '', footer = '';
+try { header = fs.readFileSync(path.join(funnelDir, 'header.txt'), 'utf-8'); } catch(e) {}
+try { footer = fs.readFileSync(path.join(funnelDir, 'footer.txt'), 'utf-8'); } catch(e) {}
+
+// ---------------------------
+// PROCESS EMAIL DRAFTS
+// ---------------------------
+fs.readdir(funnelDir, (err, files) => {
   if (err) {
-    log(`Error reading drafts folder: ${err.message}`);
+    log(`Error reading funnel folder: ${err.message}`);
     process.exit(0);
   }
+
+  // Filter for TXT files excluding header/footer
+  files = files.filter(f => f.endsWith('.txt') && !['header.txt','footer.txt'].includes(f));
 
   if (files.length === 0) {
-    log("No drafts found. Nothing to send.");
+    log("No emails found in funnel/ folder. Nothing sent this run.");
     process.exit(0);
   }
 
+  // Skip sending on weekends except welcome email
+  const today = new Date();
+  const day = today.getDay(); // 0=Sunday, 6=Saturday
+
   files.forEach(file => {
-    const draftPath = path.join(draftsDir, file);
+    if ((day === 0 || day === 6) && file.toLowerCase() !== 'welcome.txt') {
+      log(`Skipping "${file}" on weekend.`);
+      return;
+    }
+
+    const draftPath = path.join(funnelDir, file);
     const content = fs.readFileSync(draftPath, 'utf-8');
     const [firstLine, ...rest] = content.split('\n');
-    const subject = firstLine.replace(/^Subject:\s*/i, '').trim();
-    const body = rest.join('\n').trim();
+    const subject = firstLine.replace(/^Subject:\s*/i, '').trim() || "No Subject";
+
+    let body = rest.join('\n').trim();
+    body = `${header}\n\n${body}\n\n${footer}`;
+
+    // Add next email info if weekday
+    if (file.toLowerCase() === 'welcome.txt') {
+      let nextEmailNote = '';
+      if (day === 5) nextEmailNote = "Your next email will be on Monday.";
+      else if (day >= 1 && day <= 4) nextEmailNote = "Your next email will be tomorrow.";
+      body += `\n\n${nextEmailNote}`;
+    }
 
     const mailOptions = {
       from: SMTP_USER,
-      to: SMTP_USER, // or replace with a subscriber list service later
-      subject: subject || "No Subject",
-      text: body || "(empty message)",
+      to: SMTP_USER, // Replace later with subscriber list
+      subject,
+      text: body,
     };
 
     transporter.sendMail(mailOptions, (err, info) => {
