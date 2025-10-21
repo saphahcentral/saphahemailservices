@@ -32,30 +32,24 @@ jobs:
         run: npm install
 
       # -------------------------------------------------------------
-      # STEP 4 – DEBUG: LIST FILES (optional, remove after confirming)
-      # -------------------------------------------------------------
-      - name: List repo files
-        run: ls -R
-
-      # -------------------------------------------------------------
-      # STEP 5 – ENSURE LOG/SENT DIRECTORIES EXIST
+      # STEP 4 – ENSURE LOG/SENT DIRECTORIES EXIST
       # -------------------------------------------------------------
       - name: Ensure directories exist
         run: |
-          mkdir -p saphahemailservices/logs
-          mkdir -p saphahemailservices/sent
+          mkdir -p logs
+          mkdir -p sent
 
       # -------------------------------------------------------------
-      # STEP 6 – RUN EMAIL SERVICE
+      # STEP 5 – RUN EMAIL SERVICE
       # -------------------------------------------------------------
       - name: Run email service
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-        run: node ./saphahemailservices/email-send.js
+        run: node ./email-send.js
 
       # -------------------------------------------------------------
-      # STEP 7 – COMMIT SENT EMAILS AND LOGS
+      # STEP 6 – COMMIT SENT EMAILS AND LOGS
       # -------------------------------------------------------------
       - name: Commit sent emails + logs
         run: |
@@ -64,3 +58,23 @@ jobs:
           git add -A
           git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
           git push origin main
+
+      # -------------------------------------------------------------
+      # STEP 7 – SEND DAILY SUMMARY
+      # -------------------------------------------------------------
+      - name: Send daily summary
+        if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 22')
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: |
+          SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
+          if [ -f "$SUMMARY" ]; then
+            SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
+            BODY="$(cat $SUMMARY)"
+            RECIPIENT="${{ secrets.SMTP_USER }}"
+            echo "Sending daily summary to $RECIPIENT..."
+            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node ./email-send.js
+          else
+            echo "No log found for today. Skipping summary."
+          fi
