@@ -32,7 +32,13 @@ jobs:
         run: npm install
 
       # -------------------------------------------------------------
-      # STEP 4 – ENSURE LOG/SENT DIRECTORIES EXIST
+      # STEP 4 – DEBUG: LIST FILES (optional, remove after confirming)
+      # -------------------------------------------------------------
+      - name: List repo files
+        run: ls -R
+
+      # -------------------------------------------------------------
+      # STEP 5 – ENSURE LOG/SENT DIRECTORIES EXIST
       # -------------------------------------------------------------
       - name: Ensure directories exist
         run: |
@@ -40,7 +46,7 @@ jobs:
           mkdir -p saphahemailservices/sent
 
       # -------------------------------------------------------------
-      # STEP 5 – RUN EMAIL SERVICE
+      # STEP 6 – RUN EMAIL SERVICE
       # -------------------------------------------------------------
       - name: Run email service
         env:
@@ -49,7 +55,7 @@ jobs:
         run: node ./saphahemailservices/email-send.js
 
       # -------------------------------------------------------------
-      # STEP 6 – COMMIT SENT EMAILS AND LOGS
+      # STEP 7 – COMMIT SENT EMAILS AND LOGS
       # -------------------------------------------------------------
       - name: Commit sent emails + logs
         run: |
