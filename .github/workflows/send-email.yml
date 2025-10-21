@@ -1,20 +1,16 @@
 # ===================================================================
-#  SAPHAHEMAILSERVICES AUTOMATION WORKFLOW
+#  SAPHAHEMAILSERVICES AUTOMATION WORKFLOW (funnel version)
 #  File: .github/workflows/send-email.yml
-#  Purpose: Runs automated email sends + daily summary + Firestore sync
-#  Author: Migration Fix – Final Revision (Firebase-Integrated)
+#  Purpose: Sends funnel emails + daily summary + keeps logs updated
 # ===================================================================
 
 name: Saphahemailservices Automation
 
 on:
-  # Allows manual triggering from GitHub Actions tab
   workflow_dispatch:
-
-  # Scheduled runs (CRON format)
   schedule:
-    - cron: "0 * * * *"     # Every hour (for normal email runs)
-    - cron: "0 22 * * *"    # Daily summary at 00:00 SAST (22:00 UTC)
+    - cron: "0 * * * *"     # Hourly
+    - cron: "0 22 * * *"    # Daily summary 00:00 SAST (22:00 UTC)
 
 jobs:
   email-job:
@@ -28,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------------------------------------------
-      # STEP 2 – SETUP NODE.JS ENVIRONMENT
+      # STEP 2 – SETUP NODE.JS
       # -------------------------------------------------------------
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -42,14 +38,27 @@ jobs:
         run: npm install
 
       # -------------------------------------------------------------
-      # STEP 4 – ENSURE LOG/SENT DIRECTORIES EXIST
+      # STEP 4 – ENSURE funnel + LOG STRUCTURE
       # -------------------------------------------------------------
       - name: Ensure directories exist
-        run: mkdir -p logs sent
+        run: |
+          mkdir -p funnel sent logs
+          # Create test email only if no funnel messages found
+          if [ -z "$(ls -A funnel/*.txt 2>/dev/null)" ]; then
+            echo "Subject: Test Funnel Email" > funnel/sample.txt
+            echo "This is a test email to confirm funnel automation works." >> funnel/sample.txt
+          fi
 
       # -------------------------------------------------------------
-      # STEP 5 – RUN EMAIL SERVICE
-      # Includes Firebase access for subscriber data
+      # STEP 5 – SHOW funnel CONTENTS FOR DEBUGGING
+      # -------------------------------------------------------------
+      - name: List funnel contents
+        run: |
+          echo "Current funnel folder structure:"
+          ls -R funnel || echo "funnel folder not found!"
+
+      # -------------------------------------------------------------
+      # STEP 6 – RUN EMAIL SCRIPT
       # -------------------------------------------------------------
       - name: Run email service
         env:
@@ -58,29 +67,28 @@ jobs:
           FIREBASE_ADMIN_KEY: ${{ secrets.FIREBASE_ADMIN_KEY }}
         run: |
           echo "[$(date -u)] Starting email run..." >> logs/email-log-$(date +%Y-%m-%d).txt
-          node send-email.js || echo "[$(date -u)] No emails sent (or skipped) – continuing." >> logs/email-log-$(date +%Y-%m-%d).txt
+          node send-email.js || echo "[$(date -u)] No emails sent (or skipped)." >> logs/email-log-$(date +%Y-%m-%d).txt
+          echo "[$(date -u)] Email run completed." >> logs/email-log-$(date +%Y-%m-%d).txt
 
       # -------------------------------------------------------------
-      # STEP 6 – COMMIT SENT EMAILS AND LOGS
+      # STEP 7 – COMMIT SENT EMAILS AND LOGS
       # -------------------------------------------------------------
-      - name: Commit sent emails + logs
+      - name: Commit logs and sent files
         run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "actions@github.com"
           git add -A
-          git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
-          git push origin main
+          git commit -m "Auto-update logs and sent emails [ci skip]" || echo "No changes to commit"
+          git push origin main || echo "No push required"
 
       # -------------------------------------------------------------
-      # STEP 7 – SEND DAILY SUMMARY
-      # Runs only at 22:00 UTC (00:00 SAST)
+      # STEP 8 – SEND DAILY SUMMARY (22:00 UTC)
       # -------------------------------------------------------------
       - name: Send daily summary
         if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 22')
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          FIREBASE_ADMIN_KEY: ${{ secrets.FIREBASE_ADMIN_KEY }}
         run: |
           SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
 
@@ -88,9 +96,8 @@ jobs:
             SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
             BODY="$(cat $SUMMARY)"
             RECIPIENT="${{ secrets.SMTP_USER }}"
-
             echo "Sending daily summary to $RECIPIENT..."
             SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node send-email.js
           else
-            echo "No log found for today. Skipping summary."
+            echo "No log for today – skipping summary."
           fi
