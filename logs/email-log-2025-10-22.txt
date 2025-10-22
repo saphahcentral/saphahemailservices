@@ -368,3 +368,77 @@
 535 5.7.8  https://support.google.com/mail/?p=BadCredentials af79cd13be357-891cd5799dfsm910450485a.23 - gsmtp
 [2025-10-22T06:34:49.801Z] ❌ Failed to send "email4.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
 535 5.7.8  https://support.google.com/mail/?p=BadCredentials d75a77b69052e-4e8ab114132sm89049511cf.40 - gsmtp
+[2025-10-22T07:22:20.998Z] ❌ Failed to send "email35.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d071ebccsm51733965ab.17 - gsmtp
+[2025-10-22T07:22:20.999Z] ❌ Failed to send "email33.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a9768b98sm4830278173.46 - gsmtp
+[2025-10-22T07:22:21.000Z] ❌ Failed to send "email2.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a95fede6sm4901566173.12 - gsmtp
+[2025-10-22T07:22:21.000Z] ❌ Failed to send "email3.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d070a509sm51389725ab.11 - gsmtp
+[2025-10-22T07:22:21.000Z] ❌ Failed to send "email12.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a9792b46sm4846855173.55 - gsmtp
+[2025-10-22T07:22:21.000Z] ❌ Failed to send "email8.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a95fede6sm4901567173.12 - gsmtp
+[2025-10-22T07:22:21.001Z] ❌ Failed to send "email27.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials ca18e2360f4ac-93e866dbde4sm478176439f.16 - gsmtp
+[2025-10-22T07:22:21.001Z] ❌ Failed to send "email28.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d070bccbsm52114885ab.14 - gsmtp
+[2025-10-22T07:22:21.001Z] ❌ Failed to send "email34.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a9627181sm4870402173.22 - gsmtp
+[2025-10-22T07:22:21.001Z] ❌ Failed to send "email14.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a973e11esm4890638173.35 - gsmtp
+[2025-10-22T07:22:21.002Z] ❌ Failed to send "email18.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a97b92b1sm4773534173.68 - gsmtp
+[2025-10-22T07:22:21.003Z] ❌ Failed to send "email6.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d070bce5sm51597395ab.12 - gsmtp
+[2025-10-22T07:22:21.004Z] ❌ Failed to send "email20.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d06f9ff0sm50333235ab.3 - gsmtp
+[2025-10-22T07:22:21.006Z] ❌ Failed to send "email16.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials ca18e2360f4ac-93e866df2eesm499682539f.19 - gsmtp
+[2025-10-22T07:22:21.007Z] ❌ Failed to send "email32.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a9629cb6sm4734114173.23 - gsmtp
+[2025-10-22T07:22:21.008Z] ❌ Failed to send "email13.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a9768b98sm4830276173.46 - gsmtp
+[2025-10-22T07:22:21.010Z] ❌ Failed to send "email4.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials ca18e2360f4ac-93e8661ec4csm497388339f.2 - gsmtp
+[2025-10-22T07:22:21.010Z] ❌ Failed to send "email24.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a973ea40sm4870889173.31 - gsmtp
+[2025-10-22T07:22:21.011Z] ❌ Failed to send "email15.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5aa2308074dsm2686011173.1 - gsmtp
+[2025-10-22T07:22:21.011Z] ❌ Failed to send "email23.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials ca18e2360f4ac-940e5709b52sm206217439f.0 - gsmtp
+[2025-10-22T07:22:21.011Z] ❌ Failed to send "email31.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a9633fdbsm4961240173.26 - gsmtp
+[2025-10-22T07:22:21.012Z] ❌ Failed to send "email25.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a95fed44sm4714974173.2 - gsmtp
+[2025-10-22T07:22:21.012Z] ❌ Failed to send "email17.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d06f9ff0sm50333225ab.3 - gsmtp
+[2025-10-22T07:22:21.012Z] ❌ Failed to send "email10.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d06fa6d0sm51533575ab.8 - gsmtp
+[2025-10-22T07:22:21.013Z] ❌ Failed to send "email29.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d06fa03asm51137735ab.6 - gsmtp
+[2025-10-22T07:22:21.014Z] ❌ Failed to send "email26.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a973f35dsm4839729173.43 - gsmtp
+[2025-10-22T07:22:21.015Z] ❌ Failed to send "email30.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials ca18e2360f4ac-940e96c0130sm165679439f.11 - gsmtp
+[2025-10-22T07:22:21.015Z] ❌ Failed to send "email5.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a97407d6sm4910858173.37 - gsmtp
+[2025-10-22T07:22:21.018Z] ❌ Failed to send "email36.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a9796d28sm4884529173.59 - gsmtp
+[2025-10-22T07:22:21.019Z] ❌ Failed to send "email21.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a973ea52sm4861170173.41 - gsmtp
+[2025-10-22T07:22:21.025Z] ❌ Failed to send "welcome.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a9795b62sm4716419173.60 - gsmtp
+[2025-10-22T07:22:21.026Z] ❌ Failed to send "email1.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d070bce5sm51597405ab.12 - gsmtp
+[2025-10-22T07:22:21.027Z] ❌ Failed to send "email19.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials ca18e2360f4ac-93e86645264sm452639839f.10 - gsmtp
+[2025-10-22T07:22:21.029Z] ❌ Failed to send "email11.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d07c9ef0sm52171645ab.35 - gsmtp
+[2025-10-22T07:22:21.037Z] ❌ Failed to send "email7.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials 8926c6da1cb9f-5a8a97407d6sm4910859173.37 - gsmtp
+[2025-10-22T07:22:21.037Z] ❌ Failed to send "email9.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials ca18e2360f4ac-93e866e1e50sm472171439f.18 - gsmtp
+[2025-10-22T07:22:21.045Z] ❌ Failed to send "email22.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials e9e14a558f8ab-430d07a8341sm51855735ab.26 - gsmtp
