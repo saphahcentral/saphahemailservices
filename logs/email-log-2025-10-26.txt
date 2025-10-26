@@ -416,3 +416,41 @@
 [2025-10-26T12:42:15.717Z] Skipping "email9.txt" on weekend.
 [2025-10-26T12:42:15.897Z] ❌ Failed to send "welcome.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
 535 5.7.8  https://support.google.com/mail/?p=BadCredentials 98e67ed59e1d1-33fed7e9f9asm5130795a91.11 - gsmtp
+[2025-10-26T13:26:02.929Z] Skipping "email1.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email10.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email11.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email12.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email13.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email14.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email15.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email16.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email17.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email18.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email19.txt" on weekend.
+[2025-10-26T13:26:02.931Z] Skipping "email2.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email20.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email21.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email22.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email23.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email24.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email25.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email26.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email27.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email28.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email29.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email3.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email30.txt" on weekend.
+[2025-10-26T13:26:02.932Z] Skipping "email31.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email32.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email33.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email34.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email35.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email36.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email4.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email5.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email6.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email7.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email8.txt" on weekend.
+[2025-10-26T13:26:02.933Z] Skipping "email9.txt" on weekend.
+[2025-10-26T13:26:03.209Z] ❌ Failed to send "welcome.txt": Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to
+535 5.7.8  https://support.google.com/mail/?p=BadCredentials d9443c01a7336-29498d230basm50571725ad.46 - gsmtp
