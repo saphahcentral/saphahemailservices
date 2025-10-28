@@ -1,4 +1,4 @@
-// send-email.js
+// email-send.js
 const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
@@ -33,20 +33,18 @@ function log(msg) {
 }
 
 // ---------------------------
-// CREATE TRANSPORTER
+// CREATE TRANSPORTER (OUTLOOK)
 // ---------------------------
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: SMTP_USER, pass: SMTP_PASS },
+  host: "smtp.office365.com",
+  port: 587,
+  secure: false, // STARTTLS
+  auth: {
+    user: SMTP_USER,
+    pass: SMTP_PASS,
+  },
+  tls: { ciphers: 'SSLv3' }
 });
-
-// ---------------------------
-// HELPER: Check if today is weekend
-// ---------------------------
-function isWeekend() {
-  const day = new Date().getDay(); // 0=Sunday, 6=Saturday
-  return day === 0 || day === 6;
-}
 
 // ---------------------------
 // HANDLE MANUAL SUMMARY MODE
@@ -60,11 +58,8 @@ if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
   };
 
   transporter.sendMail(mailOptions, (err, info) => {
-    if (err) {
-      log(`❌ Failed to send summary: ${err.message}`);
-    } else {
-      log(`✅ Sent daily summary to ${process.env.RECIPIENT}`);
-    }
+    if (err) log(`❌ Failed to send summary: ${err.message}`);
+    else log(`✅ Sent daily summary to ${process.env.RECIPIENT}`);
     process.exit(0);
   });
   return;
@@ -86,7 +81,6 @@ fs.readdir(funnelDir, (err, files) => {
     process.exit(0);
   }
 
-  // Filter for TXT files excluding header/footer
   files = files.filter(f => f.endsWith('.txt') && !['header.txt','footer.txt'].includes(f));
 
   if (files.length === 0) {
@@ -94,7 +88,6 @@ fs.readdir(funnelDir, (err, files) => {
     process.exit(0);
   }
 
-  // Skip sending on weekends except welcome email
   const today = new Date();
   const day = today.getDay(); // 0=Sunday, 6=Saturday
 
@@ -112,30 +105,8 @@ fs.readdir(funnelDir, (err, files) => {
     let body = rest.join('\n').trim();
     body = `${header}\n\n${body}\n\n${footer}`;
 
-    // Add next email info if weekday
     if (file.toLowerCase() === 'welcome.txt') {
       let nextEmailNote = '';
       if (day === 5) nextEmailNote = "Your next email will be on Monday.";
       else if (day >= 1 && day <= 4) nextEmailNote = "Your next email will be tomorrow.";
-      body += `\n\n${nextEmailNote}`;
-    }
-
-    const mailOptions = {
-      from: SMTP_USER,
-      to: SMTP_USER, // Replace later with subscriber list
-      subject,
-      text: body,
-    };
-
-    transporter.sendMail(mailOptions, (err, info) => {
-      if (err) {
-        log(`❌ Failed to send "${file}": ${err.message}`);
-      } else {
-        log(`✅ Sent "${file}" successfully to ${mailOptions.to}`);
-        // move file to sent/
-        const sentPath = path.join(sentDir, file);
-        fs.renameSync(draftPath, sentPath);
-      }
-    });
-  });
-});
+      body += `\n\n${ne
