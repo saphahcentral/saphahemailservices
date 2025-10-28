@@ -6,11 +6,11 @@ const nodemailer = require('nodemailer');
 // ---------------------------
 // ENVIRONMENT VARIABLES
 // ---------------------------
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
+const OUTLOOK_USER = process.env.OUTLOOK_USER;
+const OUTLOOK_PASS = process.env.OUTLOOK_PASS;
 
-if (!SMTP_USER || !SMTP_PASS) {
-  console.error("Missing SMTP_USER or SMTP_PASS in environment.");
+if (!OUTLOOK_USER || !OUTLOOK_PASS) {
+  console.error("Missing OUTLOOK_USER or OUTLOOK_PASS in environment.");
   process.exit(1);
 }
 
@@ -33,33 +33,46 @@ function log(msg) {
 }
 
 // ---------------------------
-// CREATE TRANSPORTER (OUTLOOK)
+// CREATE TRANSPORTER (Outlook)
 // ---------------------------
 const transporter = nodemailer.createTransport({
   host: "smtp.office365.com",
   port: 587,
   secure: false, // STARTTLS
   auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
+    user: OUTLOOK_USER,
+    pass: OUTLOOK_PASS
   },
-  tls: { ciphers: 'SSLv3' }
+  tls: {
+    ciphers: 'SSLv3'
+  }
 });
+
+// ---------------------------
+// HELPER: Check if today is weekend
+// ---------------------------
+function isWeekend() {
+  const day = new Date().getDay(); // 0=Sunday, 6=Saturday
+  return day === 0 || day === 6;
+}
 
 // ---------------------------
 // HANDLE MANUAL SUMMARY MODE
 // ---------------------------
 if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
   const mailOptions = {
-    from: SMTP_USER,
+    from: OUTLOOK_USER,
     to: process.env.RECIPIENT,
     subject: process.env.SUBJECT,
     text: process.env.BODY,
   };
 
   transporter.sendMail(mailOptions, (err, info) => {
-    if (err) log(`❌ Failed to send summary: ${err.message}`);
-    else log(`✅ Sent daily summary to ${process.env.RECIPIENT}`);
+    if (err) {
+      log(`❌ Failed to send summary: ${err.message}`);
+    } else {
+      log(`✅ Sent daily summary to ${process.env.RECIPIENT}`);
+    }
     process.exit(0);
   });
   return;
@@ -81,6 +94,7 @@ fs.readdir(funnelDir, (err, files) => {
     process.exit(0);
   }
 
+  // Filter for TXT files excluding header/footer
   files = files.filter(f => f.endsWith('.txt') && !['header.txt','footer.txt'].includes(f));
 
   if (files.length === 0) {
@@ -88,6 +102,7 @@ fs.readdir(funnelDir, (err, files) => {
     process.exit(0);
   }
 
+  // Skip sending on weekends except welcome email
   const today = new Date();
   const day = today.getDay(); // 0=Sunday, 6=Saturday
 
@@ -105,8 +120,30 @@ fs.readdir(funnelDir, (err, files) => {
     let body = rest.join('\n').trim();
     body = `${header}\n\n${body}\n\n${footer}`;
 
+    // Add next email info if weekday
     if (file.toLowerCase() === 'welcome.txt') {
       let nextEmailNote = '';
       if (day === 5) nextEmailNote = "Your next email will be on Monday.";
       else if (day >= 1 && day <= 4) nextEmailNote = "Your next email will be tomorrow.";
-      body += `\n\n${ne
+      body += `\n\n${nextEmailNote}`;
+    }
+
+    const mailOptions = {
+      from: OUTLOOK_USER,
+      to: OUTLOOK_USER, // later replace with subscriber list
+      subject,
+      text: body,
+    };
+
+    transporter.sendMail(mailOptions, (err, info) => {
+      if (err) {
+        log(`❌ Failed to send "${file}": ${err.message}`);
+      } else {
+        log(`✅ Sent "${file}" successfully to ${mailOptions.to}`);
+        // move file to sent/
+        const sentPath = path.join(sentDir, file);
+        fs.renameSync(draftPath, sentPath);
+      }
+    });
+  });
+});
