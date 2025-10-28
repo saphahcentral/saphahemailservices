@@ -1,7 +1,7 @@
 name: Saphahemailservices Automation
 
 on:
-  workflow_dispatch:    # manual trigger
+  workflow_dispatch:        # manual trigger
   schedule:
     - cron: "0 * * * *"     # every hour
     - cron: "0 22 * * *"    # daily summary at 00:00 SAST
@@ -36,17 +36,18 @@ jobs:
       # -------------------------------------------------------------
       - name: Ensure directories exist
         run: |
-          mkdir -p logs
-          mkdir -p sent
+          mkdir -p ../logs
+          mkdir -p ../sent
 
       # -------------------------------------------------------------
       # STEP 5 – RUN EMAIL SERVICE
       # -------------------------------------------------------------
-      - name: Run email service
+      - name: Run Outlook email service
         env:
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-        run: node ./email-send.js
+          OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
+          OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
+        run: |
+          node ../email-send.js
 
       # -------------------------------------------------------------
       # STEP 6 – COMMIT SENT EMAILS AND LOGS
@@ -55,9 +56,10 @@ jobs:
         run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "actions@github.com"
-          git add -A
+          cd ..
+          git add logs sent || true
           git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
-          git push origin main
+          git push origin main || true
 
       # -------------------------------------------------------------
       # STEP 7 – SEND DAILY SUMMARY
@@ -65,16 +67,16 @@ jobs:
       - name: Send daily summary
         if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 22')
         env:
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
+          OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
         run: |
-          SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
+          SUMMARY="../logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
           if [ -f "$SUMMARY" ]; then
             SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
             BODY="$(cat $SUMMARY)"
-            RECIPIENT="${{ secrets.SMTP_USER }}"
+            RECIPIENT="${{ secrets.OUTLOOK_USER }}"
             echo "Sending daily summary to $RECIPIENT..."
-            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node ./email-send.js
+            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node ../email-send.js
           else
             echo "No log found for today. Skipping summary."
           fi
