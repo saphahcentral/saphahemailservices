@@ -10,6 +10,15 @@ jobs:
   email-job:
     runs-on: ubuntu-latest
 
+    # -------------------------------------------------------------
+    # UNIVERSAL ENVIRONMENT VARIABLES
+    # -------------------------------------------------------------
+    env:
+      OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
+      OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
+      MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
+      MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
+
     steps:
       # -------------------------------------------------------------
       # STEP 1 – CHECKOUT REPOSITORY
@@ -43,11 +52,6 @@ jobs:
       # STEP 5 – RUN EMAIL SERVICE (Outlook + MailJet)
       # -------------------------------------------------------------
       - name: Run email service
-        env:
-          OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
-          OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
-          MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
-          MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
         run: node email-send.js
 
       # -------------------------------------------------------------
@@ -66,11 +70,6 @@ jobs:
       # -------------------------------------------------------------
       - name: Send daily summary
         if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 22')
-        env:
-          OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
-          OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
-          MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
-          MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
         run: |
           SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
           if [ -f "$SUMMARY" ]; then
