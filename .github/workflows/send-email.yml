@@ -36,20 +36,19 @@ jobs:
       # -------------------------------------------------------------
       - name: Ensure directories exist
         run: |
-          mkdir -p saphahemailservices/logs
-          mkdir -p saphahemailservices/sent
+          mkdir -p logs
+          mkdir -p sent
 
       # -------------------------------------------------------------
-      # STEP 5 – RUN EMAIL SERVICE (Outlook / Mailjet)
+      # STEP 5 – RUN EMAIL SERVICE (Outlook + MailJet)
       # -------------------------------------------------------------
       - name: Run email service
         env:
           OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
           OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
-          MAILJET_API: ${{ secrets.MAILJET_API_KEY }}
-          MAILJET_SECRET: ${{ secrets.MAILJET_SECRET_KEY }}
-        run: |
-          node saphahemailservices/email-send.js
+          MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
+          MAILJET_API_SECRET: ${{ secrets.MAILJET_API_SECRET }}
+        run: node email-send.js
 
       # -------------------------------------------------------------
       # STEP 6 – COMMIT SENT EMAILS AND LOGS
@@ -58,7 +57,7 @@ jobs:
         run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "actions@github.com"
-          git add saphahemailservices/logs saphahemailservices/sent || true
+          git add logs sent || true
           git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
           git push origin main || true
 
@@ -70,14 +69,16 @@ jobs:
         env:
           OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
           OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
+          MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
+          MAILJET_API_SECRET: ${{ secrets.MAILJET_API_SECRET }}
         run: |
-          SUMMARY="saphahemailservices/logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
+          SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
           if [ -f "$SUMMARY" ]; then
             SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
             BODY="$(cat $SUMMARY)"
             RECIPIENT="${{ secrets.OUTLOOK_USER }}"
             echo "Sending daily summary to $RECIPIENT..."
-            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node saphahemailservices/email-send.js
+            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node email-send.js
           else
             echo "No log found for today. Skipping summary."
           fi
