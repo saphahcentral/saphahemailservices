@@ -1,7 +1,7 @@
 name: Saphahemailservices Automation
 
 on:
-  workflow_dispatch:        # manual trigger
+  workflow_dispatch:
   schedule:
     - cron: "0 * * * *"     # every hour
     - cron: "0 22 * * *"    # daily summary at 00:00 SAST
@@ -10,53 +10,30 @@ jobs:
   email-job:
     runs-on: ubuntu-latest
 
-    # -------------------------------------------------------------
-    # UNIVERSAL ENVIRONMENT VARIABLES
-    # -------------------------------------------------------------
-    env:
-      OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
-      OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
-      MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
-      MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
-
     steps:
-      # -------------------------------------------------------------
-      # STEP 1 – CHECKOUT REPOSITORY
-      # -------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------------------------------------------
-      # STEP 2 – SETUP NODE.JS ENVIRONMENT
-      # -------------------------------------------------------------
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # -------------------------------------------------------------
-      # STEP 3 – INSTALL DEPENDENCIES
-      # -------------------------------------------------------------
       - name: Install dependencies
         run: npm install
 
-      # -------------------------------------------------------------
-      # STEP 4 – ENSURE LOG/SENT DIRECTORIES EXIST
-      # -------------------------------------------------------------
       - name: Ensure directories exist
         run: |
-          mkdir -p logs
-          mkdir -p sent
+          mkdir -p funnel emails schedule sent logs
 
-      # -------------------------------------------------------------
-      # STEP 5 – RUN EMAIL SERVICE (Outlook + MailJet)
-      # -------------------------------------------------------------
       - name: Run email service
+        env:
+          OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
+          OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
+          MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
+          MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
         run: node email-send.js
 
-      # -------------------------------------------------------------
-      # STEP 6 – COMMIT SENT EMAILS AND LOGS
-      # -------------------------------------------------------------
       - name: Commit sent emails + logs
         run: |
           git config --local user.name "GitHub Action"
@@ -65,18 +42,17 @@ jobs:
           git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
           git push origin main || true
 
-      # -------------------------------------------------------------
-      # STEP 7 – SEND DAILY SUMMARY
-      # -------------------------------------------------------------
       - name: Send daily summary
         if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 22')
+        env:
+          OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
+          OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
         run: |
           SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
           if [ -f "$SUMMARY" ]; then
             SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
             BODY="$(cat $SUMMARY)"
             RECIPIENT="${{ secrets.OUTLOOK_USER }}"
-            echo "Sending daily summary to $RECIPIENT..."
             SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node email-send.js
           else
             echo "No log found for today. Skipping summary."
