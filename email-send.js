@@ -10,15 +10,15 @@ const Mailjet = require('node-mailjet');
 const OUTLOOK_USER = process.env.OUTLOOK_USER;
 const OUTLOOK_PASS = process.env.OUTLOOK_PASS;
 const MAILJET_API_KEY = process.env.MAILJET_API_KEY;
-const MAILJET_API_SECRET = process.env.MAILJET_SECRET_KEY;
+const MAILJET_SECRET_KEY = process.env.MAILJET_SECRET_KEY;
 
 if (!OUTLOOK_USER || !OUTLOOK_PASS) {
   console.error("Missing OUTLOOK_USER or OUTLOOK_PASS in environment.");
   process.exit(1);
 }
 
-if (!MAILJET_API_KEY || !MAILJET_API_SECRET) {
-  console.error("Missing MAILJET_API_KEY or MAILJET_API_SECRET in environment.");
+if (!MAILJET_API_KEY || !MAILJET_SECRET_KEY) {
+  console.error("Missing MAILJET_API_KEY or MAILJET_SECRET_KEY in environment.");
   process.exit(1);
 }
 
