@@ -46,8 +46,8 @@ jobs:
         env:
           OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
           OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
-          MAILJET_API: ${{ secrets.MAILJET_API }}
-          MAILJET_SECRET: ${{ secrets.MAILJET_SECRET }}
+          MAILJET_API: ${{ secrets.MAILJET_API_KEY }}
+          MAILJET_SECRET: ${{ secrets.MAILJET_SECRET_KEY }}
         run: |
           node saphahemailservices/email-send.js
 
