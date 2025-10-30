@@ -1,0 +1,24 @@
+Subject: Your Purchase is Confirmed!
+
+Hello {{FirstName}},
+
+Thank you for your order! We’re excited to confirm that your purchase has been successfully processed.
+
+Order Details:
+---------------------------
+Order Number: {{OrderNumber}}
+Product: {{ProductName}}
+Quantity: {{Quantity}}
+Price: {{Price}}
+Date: {{OrderDate}}
+---------------------------
+
+You will receive another email once your item has been shipped (if applicable). If you have any questions or need support, please reply to this email or contact us at support@saphahcentral.mailjet.com.
+
+Thank you for choosing Saphah Central Services!
+
+Best regards,
+The Saphah Central Team
+
+---------------------------
+© 2025 Saphah Central. All rights reserved.
