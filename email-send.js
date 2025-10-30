@@ -10,7 +10,7 @@ const Mailjet = require('node-mailjet');
 const OUTLOOK_USER = process.env.OUTLOOK_USER;
 const OUTLOOK_PASS = process.env.OUTLOOK_PASS;
 const MAILJET_API_KEY = process.env.MAILJET_API_KEY;
-const MAILJET_API_SECRET = process.env.MAILJET_API_SECRET;
+const MAILJET_API_SECRET = process.env.MAILJET_SECRET_KEY;
 
 if (!OUTLOOK_USER || !OUTLOOK_PASS) {
   console.error("Missing OUTLOOK_USER or OUTLOOK_PASS in environment.");
@@ -52,7 +52,7 @@ const outlookTransporter = nodemailer.createTransport({
   tls: { ciphers: 'SSLv3' }
 });
 
-const mailjetClient = Mailjet.apiConnect(MAILJET_API_KEY, MAILJET_API_SECRET);
+const mailjetClient = Mailjet.apiConnect(MAILJET_API_KEY, MAILJET_SECRET_KEY);
 
 // ---------------------------
 // HELPER: Check if today is weekend
