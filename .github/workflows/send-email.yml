@@ -70,7 +70,7 @@ jobs:
           OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
           OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
           MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
-          MAILJET_API_SECRET: ${{ secrets.MAILJET_API_SECRET }}
+          MAILJET_API_SECRET: ${{ secrets.MAILJET_SECRET_KEY }}
         run: |
           SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
           if [ -f "$SUMMARY" ]; then
