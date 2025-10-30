@@ -40,18 +40,15 @@ jobs:
           mkdir -p ../sent
 
       # -------------------------------------------------------------
-      # STEP 5 – RUN EMAIL SERVICE (HYBRID: MAILJET + OUTLOOK)
+      # STEP 5 – RUN EMAIL SERVICE (Outlook + Mailjet)
       # -------------------------------------------------------------
-      - name: Run hybrid email service
+      - name: Run email service
         env:
           OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
           OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
-          MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
-          MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
-          EMAIL_MODE: ${{ secrets.EMAIL_MODE }} # auto/manual override if needed
-        run: |
-          echo "Starting email service..."
-          node ../email-send.js
+          MAILJET_APIKEY: ${{ secrets.MAILJET_APIKEY }}
+          MAILJET_SECRET: ${{ secrets.MAILJET_SECRET }}
+        run: node ../email-send.js
 
       # -------------------------------------------------------------
       # STEP 6 – COMMIT SENT EMAILS AND LOGS
@@ -73,8 +70,8 @@ jobs:
         env:
           OUTLOOK_USER: ${{ secrets.OUTLOOK_USER }}
           OUTLOOK_PASS: ${{ secrets.OUTLOOK_PASS }}
-          MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
-          MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
+          MAILJET_APIKEY: ${{ secrets.MAILJET_APIKEY }}
+          MAILJET_SECRET: ${{ secrets.MAILJET_SECRET }}
         run: |
           SUMMARY="../logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
           if [ -f "$SUMMARY" ]; then
