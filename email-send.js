@@ -1,11 +1,7 @@
-// email-send.js
-// Hybrid email sender: Mailjet (funnel/) + Outlook (emails/)
-// Requires env: OUTLOOK_USER, OUTLOOK_PASS, MAILJET_API_KEY, MAILJET_SECRET_KEY
-
 const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
-const nodeMailjet = require('node-mailjet');
+const Mailjet = require('node-mailjet');
 
 // ---------------------------
 // ENVIRONMENT VARIABLES
@@ -27,215 +23,154 @@ if (!MAILJET_API_KEY || !MAILJET_SECRET_KEY) {
 // ---------------------------
 // PATHS
 // ---------------------------
-const baseDir   = __dirname;         // repo root
+const baseDir   = __dirname;
 const funnelDir = path.join(baseDir, 'funnel');
 const emailsDir = path.join(baseDir, 'emails');
+const scheduleDir = path.join(baseDir, 'schedule');
 const sentDir   = path.join(baseDir, 'sent');
 const logsDir   = path.join(baseDir, 'logs');
 
-[funnelDir, emailsDir, sentDir, logsDir].forEach(dir => {
+[funnelDir, emailsDir, scheduleDir, sentDir, logsDir].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
 const logFile = path.join(logsDir, `email-log-${new Date().toISOString().slice(0,10)}.txt`);
 function log(msg) {
-  const line = `[${new Date().toISOString()}] ${msg}\n`;
-  fs.appendFileSync(logFile, line);
-  console.log(line.trim());
+  fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${msg}\n`);
+  console.log(msg);
 }
 
 // ---------------------------
-// CREATE TRANSPORTERS / CLIENTS
+// CREATE TRANSPORTERS
 // ---------------------------
 const outlookTransporter = nodemailer.createTransport({
   host: "smtp.office365.com",
   port: 587,
-  secure: false, // STARTTLS
+  secure: false,
   auth: { user: OUTLOOK_USER, pass: OUTLOOK_PASS },
   tls: { ciphers: 'SSLv3' }
 });
-
-// Correct node-mailjet usage: call .connect(apiKey, apiSecret) (returns client)
-const mailjetClient = nodeMailjet.connect(MAILJET_API_KEY, MAILJET_SECRET_KEY);
+const mailjetClient = Mailjet.apiConnect(MAILJET_API_KEY, MAILJET_SECRET_KEY);
 
 // ---------------------------
-// HELPERS
+// HELPER: Check if today is weekend
 // ---------------------------
 function isWeekend() {
-  const day = new Date().getDay(); // 0=Sunday, 6=Saturday
+  const day = new Date().getDay();
   return day === 0 || day === 6;
 }
 
-function extractRecipientFromBody(body) {
-  // Accept formats like:
-  // {{RecipientEmail:someone@example.com}}
-  // {{ RecipientEmail : someone@example.com }}
-  const rx = /{{\s*RecipientEmail\s*:\s*([^}\s]+)\s*}}/i;
-  const m = body.match(rx);
-  if (m && m[1]) return m[1].trim();
-  return null;
-}
-
-function sendOutlookEmail(to, subject, body) {
-  return new Promise((resolve, reject) => {
-    const mailOptions = {
-      from: OUTLOOK_USER,
-      to,
-      subject,
-      text: body
-    };
-    outlookTransporter.sendMail(mailOptions, (err, info) => {
-      if (err) {
-        log(`❌ Outlook failed to "${to}" subject="${subject}" — ${err.message}`);
-        return reject(err);
-      }
-      log(`✅ Outlook sent to ${to} — "${subject}"`);
-      resolve(info);
-    });
-  });
-}
-
-function sendMailjetEmail(to, subject, body) {
-  return mailjetClient
-    .post("send", { version: 'v3.1' })
-    .request({
-      Messages: [{
-        From: { Email: "scs6027main@saphahcentral.mailjet.com", Name: "Saphah Central" },
-        To: [{ Email: to }],
-        Subject: subject,
-        TextPart: body
-      }]
-    })
-    .then(result => {
-      log(`✅ Mailjet sent to ${to} — "${subject}" (ID: ${result.body && result.body.MessageUUID ? result.body.MessageUUID : 'n/a'})`);
-      return result;
-    })
-    .catch(err => {
-      const message = err && err.message ? err.message : JSON.stringify(err);
-      log(`❌ Mailjet failed to "${to}" subject="${subject}" — ${message}`);
-      throw err;
-    });
-}
-
 // ---------------------------
-// Manual summary mode (single send)
+// HANDLE MANUAL SUMMARY MODE
+// ---------------------------
 if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
-  (async () => {
-    const recipient = process.env.RECIPIENT;
-    const subject = process.env.SUBJECT;
-    const body = process.env.BODY;
-    try {
-      if (recipient && recipient.endsWith('@saphahcentral.mailjet.com')) {
-        await sendMailjetEmail(recipient, subject, body);
-      } else {
-        await sendOutlookEmail(recipient, subject, body);
-      }
-      process.exit(0);
-    } catch (e) {
-      // Already logged
-      process.exit(0); // keep action non-failing (controlled)
-    }
-  })();
+  const mailOptions = {
+    from: OUTLOOK_USER,
+    to: process.env.RECIPIENT,
+    subject: process.env.SUBJECT,
+    text: process.env.BODY,
+  };
+  outlookTransporter.sendMail(mailOptions, (err, info) => {
+    if (err) log(`❌ Failed to send summary: ${err.message}`);
+    else log(`✅ Sent daily summary to ${process.env.RECIPIENT}`);
+    process.exit(0);
+  });
   return;
 }
 
 // ---------------------------
-// PROCESS A SINGLE FOLDER (returns array of promises)
-function processFolder(folderPath, useMailjet) {
-  let files = [];
-  try {
-    files = fs.readdirSync(folderPath).filter(f => f.endsWith('.txt'));
-  } catch (e) {
-    log(`Error reading folder ${folderPath}: ${e.message}`);
-    return [];
-  }
-  if (!files.length) {
-    log(`No emails found in ${folderPath}.`);
-    return [];
-  }
+// PROCESS EMAILS FUNCTION
+// ---------------------------
+function processEmails(folder, service) {
+  fs.readdir(folder, (err, files) => {
+    if (err) { log(`Error reading folder ${folder}: ${err.message}`); return; }
+    files = files.filter(f => f.endsWith('.txt'));
+    if (!files.length) { log(`No emails found in ${folder}.`); return; }
 
-  const day = new Date().getDay();
-  const sendPromises = [];
+    const today = new Date();
+    const day = today.getDay();
 
-  files.forEach(file => {
-    // Weekend rule: funnel (Mailjet) skips except welcome.txt
-    if (useMailjet && (day === 0 || day === 6) && file.toLowerCase() !== 'welcome.txt') {
-      log(`Skipping "${file}" on weekend.`);
-      return;
-    }
-
-    const filePath = path.join(folderPath, file);
-    let content;
-    try {
-      content = fs.readFileSync(filePath, 'utf-8');
-    } catch (e) {
-      log(`Failed to read "${filePath}": ${e.message}`);
-      return;
-    }
-
-    // Subject line is first line starting with "Subject:"
-    const lines = content.split(/\r?\n/);
-    let subject = "No Subject";
-    if (lines.length) {
-      const firstLine = lines[0];
-      if (/^Subject:/i.test(firstLine)) {
-        subject = firstLine.replace(/^Subject:\s*/i, '').trim();
-        // body is rest of lines
-        lines.shift();
+    files.forEach(file => {
+      if ((folder === funnelDir && (day === 0 || day === 6) && file.toLowerCase() !== 'welcome.txt')) {
+        log(`Skipping "${file}" on weekend.`);
+        return;
       }
-    }
-    let body = lines.join('\n').trim();
 
-    // Try to extract explicit recipient from body placeholder
-    const explicitRecipient = extractRecipientFromBody(body);
-    const recipient = explicitRecipient || OUTLOOK_USER; // fallback to OUTLOOK_USER
+      const filePath = path.join(folder, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const [firstLine, ...rest] = content.split('\n');
+      const subject = firstLine.replace(/^Subject:\s*/i,'').trim() || "No Subject";
+      const body = rest.join('\n').trim();
 
-    if (useMailjet) {
-      // send via Mailjet
-      const p = sendMailjetEmail(recipient, subject, body)
-        .then(res => {
-          // move file to sent
-          try { fs.renameSync(filePath, path.join(sentDir, file)); } catch(e){ log(`Move-to-sent failed for ${file}: ${e.message}`); }
-          return res;
-        })
-        .catch(err => {
-          // keep file in place for retry
-          return null;
+      if (service === 'outlook') {
+        outlookTransporter.sendMail({ from: OUTLOOK_USER, to: OUTLOOK_USER, subject, text: body }, (err, info) => {
+          if (err) log(`❌ Failed "${file}" via Outlook: ${err.message}`);
+          else { log(`✅ Sent "${file}" via Outlook`); fs.renameSync(filePath, path.join(sentDir, file)); }
         });
-      sendPromises.push(p);
-    } else {
-      // send via Outlook
-      const p = sendOutlookEmail(recipient, subject, body)
-        .then(res => {
-          try { fs.renameSync(filePath, path.join(sentDir, file)); } catch(e){ log(`Move-to-sent failed for ${file}: ${e.message}`); }
-          return res;
-        })
-        .catch(err => {
-          return null;
-        });
-      sendPromises.push(p);
-    }
+      } else if (service === 'mailjet') {
+        let recipient = OUTLOOK_USER;
+        const match = body.match(/{{RecipientEmail}}/i);
+        if (match) recipient = match[1];
+
+        mailjetClient.post("send", { version: 'v3.1' }).request({
+          Messages: [{
+            From: { Email: OUTLOOK_USER, Name: "Saphah Central" },
+            To: [{ Email: recipient, Name: "Subscriber" }],
+            Subject: subject,
+            TextPart: body,
+          }]
+        }).then(result => {
+          log(`✅ Sent "${file}" via MailJet to ${recipient}`);
+          fs.renameSync(filePath, path.join(sentDir, file));
+        }).catch(err => log(`❌ Failed "${file}" via MailJet: ${err.message}`));
+      }
+    });
   });
-
-  return sendPromises;
 }
 
 // ---------------------------
-// RUN PROCESS (funnel -> mailjet, emails -> outlook)
-(async () => {
-  try {
-    log("Starting email run...");
+// PROCESS SCHEDULED EMAILS
+// ---------------------------
+function processScheduledEmails() {
+  fs.readdir(scheduleDir, (err, files) => {
+    if (err) { log(`Error reading schedule folder: ${err.message}`); return; }
+    files = files.filter(f => f.endsWith('.txt'));
+    if (!files.length) { log("No scheduled emails found."); return; }
 
-    const mailjetPromises = processFolder(funnelDir, true);
-    const outlookPromises = processFolder(emailsDir, false);
+    files.forEach(file => {
+      const filePath = path.join(scheduleDir, file);
+      const lines = fs.readFileSync(filePath,'utf-8').split('\n').filter(l => l.trim() && l.includes('|'));
+      if (!lines.length) {
+        log(`Schedule file "${file}" empty or placeholder. Skipping.`);
+        return fs.unlinkSync(filePath); // remove empty schedule file
+      }
 
-    // Wait for all to finish (if none, resolves immediately)
-    await Promise.all([...mailjetPromises, ...outlookPromises]);
+      lines.forEach(line => {
+        const [recipient, templateFile] = line.split('|').map(s=>s.trim());
+        if (!recipient || !templateFile) { log(`❌ Invalid line in "${file}": ${line}`); return; }
 
-    log("Email run finished.");
-    process.exit(0);
-  } catch (err) {
-    log(`Unexpected error: ${err && err.message ? err.message : String(err)}`);
-    process.exit(0);
-  }
-})();
+        const templatePath = path.join(emailsDir, templateFile);
+        if (!fs.existsSync(templatePath)) { log(`❌ Template not found: ${templateFile}`); return; }
+
+        const content = fs.readFileSync(templatePath,'utf-8');
+        const [firstLine,...rest] = content.split('\n');
+        const subject = firstLine.replace(/^Subject:\s*/i,'').trim() || "No Subject";
+        const body = rest.join('\n').trim();
+
+        outlookTransporter.sendMail({ from: OUTLOOK_USER, to: recipient, subject, text: body }, (err, info) => {
+          if (err) log(`❌ Failed scheduled email to ${recipient}: ${err.message}`);
+          else log(`✅ Scheduled email sent to ${recipient}`);
+        });
+      });
+
+      fs.unlinkSync(filePath); // remove schedule file after processing
+    });
+  });
+}
+
+// ---------------------------
+// RUN ALL EMAILS
+// ---------------------------
+processEmails(funnelDir, 'mailjet');    // email series
+processEmails(emailsDir, 'outlook');    // ad-hoc templates
+processScheduledEmails();               // scheduled sends
