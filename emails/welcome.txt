@@ -1,0 +1,23 @@
+Subject: Welcome to Saphah Central!
+
+━━━━━━━━━━━━━━━━━━━━━━
+Saphah Central
+Your hub for updates, tips, and resources
+━━━━━━━━━━━━━━━━━━━━━━
+
+Hello {{FirstName}},
+
+Welcome to Saphah Central! We're thrilled to have you on board. From today, you’ll start receiving our latest updates, helpful insights, and special content designed just for you.
+
+We encourage you to explore our resources and feel free to reply to this email if you have any questions or feedback — we’re here to help!
+
+Stay connected and enjoy everything Saphah Central has to offer.
+
+Warm regards,
+The Saphah Central Team
+
+━━━━━━━━━━━━━━━━━━━━━━
+© 2025 Saphah Central. All rights reserved.
+Emails: saphahcentralservices@gmail.com | saphahcentral@outlook.com
+Website: https://saphahcentral.github.io/saphah/index.html
+━━━━━━━━━━━━━━━━━━━━━━
