@@ -1,6 +1,6 @@
 /**
- * Gmail OAuth2 Email Sender with Full SENT Logging
- * Funnel messages now recorded exactly as sent.
+ * Gmail OAuth2 Email Sender — Final Version
+ * Now with no-duplicate-send safeguard + full SENT logging
  */
 
 const fs = require("fs");
@@ -23,33 +23,42 @@ const oAuth2Client = new google.auth.OAuth2(
 );
 oAuth2Client.setCredentials({ refresh_token: GMAIL_REFRESH_TOKEN });
 
-// === Log file ===
-const logFile = path.join(__dirname, "email_status.log");
+// === Directories ===
+const baseDir = __dirname;
+const scheduleDir = path.join(baseDir, "SCHEDULE");
+const emailsDir = path.join(baseDir, "EMAILS");
+const sentDir = path.join(baseDir, "SENT");
+const logFile = path.join(baseDir, "email_status.log");
+
+// === Helpers ===
 function writeLog(message) {
   const entry = `[${new Date().toISOString()}] ${message}\n`;
   fs.appendFileSync(logFile, entry, "utf8");
   console.log(entry.trim());
 }
 
-// === Directories ===
-const baseDir = __dirname;
-const scheduleDir = path.join(baseDir, "SCHEDULE");
-const emailsDir = path.join(baseDir, "EMAILS");
-const sentDir = path.join(baseDir, "SENT");
-
-// === Ensure SENT exists ===
-if (!fs.existsSync(sentDir)) fs.mkdirSync(sentDir);
-
-// === Load static parts ===
 function safeRead(filePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8").trim() : "";
 }
+
+function recipientAlreadySent(recipient) {
+  if (!fs.existsSync(sentDir)) return false;
+  const sentFiles = fs.readdirSync(sentDir);
+  const sanitized = recipient.replace(/[@.]/g, "_");
+  return sentFiles.some((f) => f.includes(sanitized));
+}
+
+// === Create SENT dir if missing ===
+if (!fs.existsSync(sentDir)) fs.mkdirSync(sentDir);
+
+// === Load static parts ===
 const header = safeRead(path.join(emailsDir, "header.txt"));
 const footer = safeRead(path.join(emailsDir, "footer.txt"));
+const welcome = safeRead(path.join(emailsDir, "welcome.txt"));
 
 // === Read schedule ===
 const files = fs.existsSync(scheduleDir)
-  ? fs.readdirSync(scheduleDir).filter(f => f.endsWith(".txt"))
+  ? fs.readdirSync(scheduleDir).filter((f) => f.endsWith(".txt"))
   : [];
 
 if (files.length === 0 || (files.length === 1 && files[0] === "0.txt")) {
@@ -58,6 +67,7 @@ if (files.length === 0 || (files.length === 1 && files[0] === "0.txt")) {
   process.exit();
 }
 
+// === Begin process ===
 (async () => {
   try {
     const accessToken = await oAuth2Client.getAccessToken();
@@ -74,21 +84,28 @@ if (files.length === 0 || (files.length === 1 && files[0] === "0.txt")) {
       },
     });
 
-    // === Filter recipients ===
+    // === Prepare recipient list ===
     const recipients = [];
     for (const file of files) {
-      const content = fs.readFileSync(path.join(scheduleDir, file), "utf8").trim();
-      if (content && content !== "test@example.com") recipients.push(content);
+      const email = fs.readFileSync(path.join(scheduleDir, file), "utf8").trim();
+      if (
+        email &&
+        email !== "test@example.com" &&
+        !recipientAlreadySent(email)
+      ) {
+        recipients.push(email);
+      } else if (recipientAlreadySent(email)) {
+        writeLog(`Skipped duplicate: ${email}`);
+      }
     }
 
     if (recipients.length === 0) {
-      writeLog("No valid recipients found. Exiting gracefully.");
+      writeLog("No valid unsent recipients found. Exiting gracefully.");
       process.exitCode = 0;
       process.exit();
     }
 
-    // === Prepare message content ===
-    const welcome = safeRead(path.join(emailsDir, "welcome.txt"));
+    // === Email details ===
     const subject = "Automated Notice from SCS / DOTS Service";
     const htmlBody = `
       ${header}
@@ -96,7 +113,7 @@ if (files.length === 0 || (files.length === 1 && files[0] === "0.txt")) {
       ${footer}
     `;
 
-    // === Send and log ===
+    // === Send loop ===
     for (const recipient of recipients) {
       try {
         await transporter.sendMail({
@@ -108,7 +125,7 @@ if (files.length === 0 || (files.length === 1 && files[0] === "0.txt")) {
 
         writeLog(`Email sent to ${recipient}`);
 
-        // Write copy to SENT folder
+        // Write SENT record
         const sentCopy = `
 ===============================
  SENT EMAIL LOG
