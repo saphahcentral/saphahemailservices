@@ -2,35 +2,30 @@
 const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
-const Mailjet = require('node-mailjet');
+const { google } = require('googleapis');
 
 // ---------------------------
 // ENVIRONMENT VARIABLES
 // ---------------------------
-const OUTLOOK_USER = process.env.OUTLOOK_USER;
-const OUTLOOK_PASS = process.env.OUTLOOK_PASS;
-const MAILJET_API_KEY = process.env.MAILJET_API_KEY;
-const MAILJET_SECRET_KEY = process.env.MAILJET_SECRET_KEY;
+const GMAIL_USER      = process.env.GMAIL_USER;        // e.g., saphahcentralservices@gmail.com
+const CLIENT_ID       = process.env.GMAIL_CLIENT_ID;
+const CLIENT_SECRET   = process.env.GMAIL_CLIENT_SECRET;
+const REFRESH_TOKEN   = process.env.GMAIL_REFRESH_TOKEN;
 
-if (!OUTLOOK_USER || !OUTLOOK_PASS) {
-  console.error("Missing OUTLOOK_USER or OUTLOOK_PASS in environment.");
-  process.exit(1);
-}
-
-if (!MAILJET_API_KEY || !MAILJET_SECRET_KEY) {
-  console.error("Missing MAILJET_API_KEY or MAILJET_SECRET_KEY in environment.");
+if (!GMAIL_USER || !CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN) {
+  console.error("Missing Gmail OAuth2 secrets in environment.");
   process.exit(1);
 }
 
 // ---------------------------
 // PATHS
 // ---------------------------
-const baseDir     = __dirname;
-const funnelDir   = path.join(baseDir, 'funnel');
-const emailsDir   = path.join(baseDir, 'emails');
-const scheduledDir= path.join(baseDir, 'scheduled');
-const sentDir     = path.join(baseDir, 'sent');
-const logsDir     = path.join(baseDir, 'logs');
+const baseDir      = __dirname;
+const funnelDir    = path.join(baseDir, 'funnel');
+const emailsDir    = path.join(baseDir, 'emails');
+const scheduledDir = path.join(baseDir, 'scheduled');
+const sentDir      = path.join(baseDir, 'sent');
+const logsDir      = path.join(baseDir, 'logs');
 
 [funnelDir, emailsDir, scheduledDir, sentDir, logsDir].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -43,144 +38,94 @@ function log(msg) {
 }
 
 // ---------------------------
-// CREATE TRANSPORTERS
+// CREATE GMAIL TRANSPORTER (OAuth2)
 // ---------------------------
-const outlookTransporter = nodemailer.createTransport({
-  host: "smtp.office365.com",
-  port: 587,
-  secure: false,
-  auth: { user: OUTLOOK_USER, pass: OUTLOOK_PASS },
-  tls: { ciphers: 'SSLv3' }
-});
+const oAuth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
+oAuth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
 
-const mailjetClient = Mailjet.apiConnect(MAILJET_API_KEY, MAILJET_SECRET_KEY);
+async function createTransporter() {
+  const accessToken = await oAuth2Client.getAccessToken();
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      type: 'OAuth2',
+      user: GMAIL_USER,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      refreshToken: REFRESH_TOKEN,
+      accessToken: accessToken.token,
+    },
+  });
+}
 
 // ---------------------------
-// HELPER FUNCTIONS
+// HELPER: Check if today is weekend
 // ---------------------------
 function isWeekend() {
   const day = new Date().getDay();
   return day === 0 || day === 6;
 }
 
-function getReplyTo(sendingEmail) {
-  let replyTo = 'saphahcentralservices@gmail.com';
-  const match = sendingEmail.match(/^([^@]+)@saphahcentral\.mailjet\.com$/i);
-  if (match) replyTo = `saphahcentralservices+${match[1]}@gmail.com`;
-  return replyTo;
-}
-
 // ---------------------------
-// HANDLE MANUAL SUMMARY MODE
+// PROCESS EMAIL FUNCTION
 // ---------------------------
-if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
+async function sendEmail(to, subject, body) {
+  const transporter = await createTransporter();
   const mailOptions = {
-    from: OUTLOOK_USER,
-    to: process.env.RECIPIENT,
-    subject: process.env.SUBJECT,
-    text: process.env.BODY,
+    from: GMAIL_USER,
+    to,
+    subject,
+    text: body,
   };
-
-  outlookTransporter.sendMail(mailOptions, (err, info) => {
-    if (err) log(`❌ Failed to send summary: ${err.message}`);
-    else log(`✅ Sent daily summary to ${process.env.RECIPIENT}`);
-    process.exit(0);
-  });
-  return;
+  return transporter.sendMail(mailOptions);
 }
-
-// ---------------------------
-// READ HEADER + FOOTER
-// ---------------------------
-let header = '', footer = '';
-try { header = fs.readFileSync(path.join(funnelDir, 'header.txt'), 'utf-8'); } catch(e) {}
-try { footer = fs.readFileSync(path.join(funnelDir, 'footer.txt'), 'utf-8'); } catch(e) {}
-
-// ---------------------------
-// SEND FUNCTIONS
-// ---------------------------
-function sendOutlook(toEmail, subject, body, replyTo) {
-  return new Promise((resolve, reject) => {
-    const mailOptions = { from: OUTLOOK_USER, to: toEmail, subject, text: body, replyTo };
-    outlookTransporter.sendMail(mailOptions, (err, info) => err ? reject(err) : resolve(info));
-  });
-}
-
-function sendMailJet(fromEmail, replyTo, toEmail, subject, body) {
-  return mailjetClient.post("send", { version: 'v3.1' }).request({
-    Messages: [{
-      From: { Email: fromEmail, Name: "Saphah Central" },
-      To: [{ Email: toEmail, Name: "Subscriber" }],
-      Subject: subject,
-      TextPart: body,
-      ReplyTo: { Email: replyTo }
-    }]
-  });
-}
-
-// ---------------------------
-// PROCESS EMAIL FILE
-// ---------------------------
-function processEmailFile(templatePath, toEmail, sendingEmail, service) {
-  const content = fs.readFileSync(templatePath, 'utf-8');
-  const [firstLine, ...rest] = content.split('\n');
-  const subject = firstLine.replace(/^Subject:\s*/i, '').trim() || "No Subject";
-  const body = `${header}\n\n${rest.join('\n').trim()}\n\n${footer}`;
-  const replyTo = getReplyTo(sendingEmail);
-
-  // Prepare content for sent copy
-  const sentContent = `From: ${sendingEmail}\nTo: ${toEmail}\nSubject: ${subject}\n\n${body}`;
-
-  if (service === 'mailjet') {
-    sendMailJet(sendingEmail, replyTo, toEmail, subject, body)
-      .then(result => {
-        log(`✅ Sent "${path.basename(templatePath)}" via MailJet to ${toEmail}`);
-        fs.writeFileSync(path.join(sentDir, path.basename(templatePath)), sentContent);
-      })
-      .catch(err => log(`❌ Failed "${path.basename(templatePath)}" via MailJet: ${err.message}`));
-  } else {
-    sendOutlook(toEmail, subject, body, replyTo)
-      .then(info => {
-        log(`✅ Sent "${path.basename(templatePath)}" via Outlook to ${toEmail}`);
-        fs.writeFileSync(path.join(sentDir, path.basename(templatePath)), sentContent);
-      })
-      .catch(err => log(`❌ Failed "${path.basename(templatePath)}" via Outlook: ${err.message}`));
-  }
-}
-
-// ---------------------------
-// PROCESS FUNNEL EMAILS
-// ---------------------------
-fs.readdir(funnelDir, (err, files) => {
-  if (err) return log(`Error reading funnel folder: ${err.message}`);
-  files = files.filter(f => f.endsWith('.txt') && !['header.txt','footer.txt'].includes(f));
-
-  const day = new Date().getDay();
-  files.forEach(file => {
-    if ((day === 0 || day === 6) && file.toLowerCase() !== 'welcome.txt') {
-      log(`Skipping "${file}" on weekend.`);
-      return;
-    }
-    const templatePath = path.join(funnelDir, file);
-    processEmailFile(templatePath, OUTLOOK_USER, OUTLOOK_USER, 'mailjet');
-  });
-});
 
 // ---------------------------
 // PROCESS SCHEDULED EMAILS
 // ---------------------------
-fs.readdir(scheduledDir, (err, files) => {
-  if (err) return log(`Error reading scheduled folder: ${err.message}`);
-  files = files.filter(f => f.endsWith('.txt'));
-  files.forEach(file => {
+async function processScheduled() {
+  const scheduleFiles = fs.readdirSync(scheduledDir).filter(f => f.endsWith('.txt'));
+  if (scheduleFiles.length === 0) {
+    log("No scheduled emails found. Exiting with code 99.");
+    process.exit(99);
+  }
+
+  for (const file of scheduleFiles) {
     const filePath = path.join(scheduledDir, file);
-    const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
-    lines.forEach(line => {
-      const [toEmail, sendingEmail, templateFile] = line.split('|').map(s => s.trim());
-      if (!templateFile) return;
-      const templatePath = path.join(emailsDir, templateFile);
-      processEmailFile(templatePath, toEmail, sendingEmail, 'outlook');
-    });
-    fs.unlinkSync(filePath); // delete after processing
-  });
-});
+    const content = fs.readFileSync(filePath, 'utf-8').trim();
+    if (!content || content === '|') continue; // nothing to send
+
+    const [sendTo, templateName] = content.split('|').map(s => s.trim());
+    if (!sendTo || !templateName) continue;
+
+    const templatePath = path.join(emailsDir, templateName);
+    if (!fs.existsSync(templatePath)) {
+      log(`Template ${templateName} not found. Skipping.`);
+      continue;
+    }
+
+    let body = fs.readFileSync(templatePath, 'utf-8');
+    let subject = body.split('\n')[0].replace(/^Subject:\s*/i, '') || "No Subject";
+
+    try {
+      await sendEmail(sendTo, subject, body);
+      log(`✅ Sent "${templateName}" to ${sendTo}`);
+      // move template copy to SENT with details
+      const sentCopy = path.join(sentDir, `${Date.now()}_${templateName}`);
+      fs.writeFileSync(sentCopy, `To: ${sendTo}\nSubject: ${subject}\n\n${body}`);
+      // delete schedule file
+      fs.unlinkSync(filePath);
+    } catch (err) {
+      log(`❌ Failed to send "${templateName}" to ${sendTo}: ${err.message}`);
+    }
+  }
+}
+
+// ---------------------------
+// RUN
+// ---------------------------
+(async () => {
+  log("Starting email-send.js run...");
+  await processScheduled();
+  log("Email run finished.");
+})();
