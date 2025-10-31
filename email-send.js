@@ -1,26 +1,64 @@
 /**
- * saphahemailservices - Gmail OAuth2 Email Sender
- * Using Google API and Nodemailer
- * Exits with code 0 on success, 1 on failure.
- * (If an internal routine ever triggers code 99, it is normalized to 0.)
+ * Gmail OAuth2 Email Sender with Full SENT Logging
+ * Funnel messages now recorded exactly as sent.
  */
 
 const fs = require("fs");
+const path = require("path");
 const nodemailer = require("nodemailer");
 const { google } = require("googleapis");
 
-// === Load Secrets from Environment Variables ===
-const CLIENT_ID = process.env.GMAIL_CLIENT_ID;
-const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET;
-const REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN;
-const GMAIL_USER = process.env.GMAIL_USER;
+// === OAuth2 setup ===
+const {
+  GMAIL_CLIENT_ID,
+  GMAIL_CLIENT_SECRET,
+  GMAIL_REFRESH_TOKEN,
+  GMAIL_USER,
+} = process.env;
 
-// === OAuth2 Configuration ===
-const oAuth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
-oAuth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
+const oAuth2Client = new google.auth.OAuth2(
+  GMAIL_CLIENT_ID,
+  GMAIL_CLIENT_SECRET,
+  "https://developers.google.com/oauthplayground"
+);
+oAuth2Client.setCredentials({ refresh_token: GMAIL_REFRESH_TOKEN });
 
-// === Email Sending Function ===
-async function sendMail() {
+// === Log file ===
+const logFile = path.join(__dirname, "email_status.log");
+function writeLog(message) {
+  const entry = `[${new Date().toISOString()}] ${message}\n`;
+  fs.appendFileSync(logFile, entry, "utf8");
+  console.log(entry.trim());
+}
+
+// === Directories ===
+const baseDir = __dirname;
+const scheduleDir = path.join(baseDir, "SCHEDULE");
+const emailsDir = path.join(baseDir, "EMAILS");
+const sentDir = path.join(baseDir, "SENT");
+
+// === Ensure SENT exists ===
+if (!fs.existsSync(sentDir)) fs.mkdirSync(sentDir);
+
+// === Load static parts ===
+function safeRead(filePath) {
+  return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8").trim() : "";
+}
+const header = safeRead(path.join(emailsDir, "header.txt"));
+const footer = safeRead(path.join(emailsDir, "footer.txt"));
+
+// === Read schedule ===
+const files = fs.existsSync(scheduleDir)
+  ? fs.readdirSync(scheduleDir).filter(f => f.endsWith(".txt"))
+  : [];
+
+if (files.length === 0 || (files.length === 1 && files[0] === "0.txt")) {
+  writeLog("No schedule detected. Skipping send.");
+  process.exitCode = 0;
+  process.exit();
+}
+
+(async () => {
   try {
     const accessToken = await oAuth2Client.getAccessToken();
 
@@ -29,60 +67,83 @@ async function sendMail() {
       auth: {
         type: "OAuth2",
         user: GMAIL_USER,
-        clientId: CLIENT_ID,
-        clientSecret: CLIENT_SECRET,
-        refreshToken: REFRESH_TOKEN,
+        clientId: GMAIL_CLIENT_ID,
+        clientSecret: GMAIL_CLIENT_SECRET,
+        refreshToken: GMAIL_REFRESH_TOKEN,
         accessToken: accessToken.token,
       },
     });
 
-    // === Example email payload ===
-    const mailOptions = {
-      from: `Saphahe Mail Service <${GMAIL_USER}>`,
-      to: "test@example.com", // replace dynamically later
-      subject: "📧 Test Email from Saphahe Mail Service",
-      text: "This is a test email sent via Gmail OAuth2 automation.",
-    };
+    // === Filter recipients ===
+    const recipients = [];
+    for (const file of files) {
+      const content = fs.readFileSync(path.join(scheduleDir, file), "utf8").trim();
+      if (content && content !== "test@example.com") recipients.push(content);
+    }
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent successfully:", result.response);
+    if (recipients.length === 0) {
+      writeLog("No valid recipients found. Exiting gracefully.");
+      process.exitCode = 0;
+      process.exit();
+    }
 
-    fs.appendFileSync(
-      "email_status.log",
-      `[${new Date().toISOString()}] SUCCESS: ${result.response}\n`
-    );
+    // === Prepare message content ===
+    const welcome = safeRead(path.join(emailsDir, "welcome.txt"));
+    const subject = "Automated Notice from SCS / DOTS Service";
+    const htmlBody = `
+      ${header}
+      ${welcome}
+      ${footer}
+    `;
 
-    // === Exit normalization ===
+    // === Send and log ===
+    for (const recipient of recipients) {
+      try {
+        await transporter.sendMail({
+          from: `Saphahemailservices <${GMAIL_USER}>`,
+          to: recipient,
+          subject,
+          html: htmlBody,
+        });
+
+        writeLog(`Email sent to ${recipient}`);
+
+        // Write copy to SENT folder
+        const sentCopy = `
+===============================
+ SENT EMAIL LOG
+===============================
+Date: ${new Date().toISOString()}
+To: ${recipient}
+From: ${GMAIL_USER}
+Subject: ${subject}
+-------------------------------
+[HEADER]
+${header}
+-------------------------------
+[BODY]
+${welcome}
+-------------------------------
+[FOOTER]
+${footer}
+===============================
+`;
+        const sentFile = path.join(
+          sentDir,
+          `${Date.now()}-${recipient.replace(/[@.]/g, "_")}.txt`
+        );
+        fs.writeFileSync(sentFile, sentCopy.trim(), "utf8");
+      } catch (err) {
+        writeLog(`Error sending to ${recipient}: ${err.message}`);
+      }
+    }
+
+    writeLog("Email batch completed successfully.");
     process.exitCode = 0;
-  } catch (error) {
-    console.error("❌ Error sending email:", error);
-    fs.appendFileSync(
-      "email_status.log",
-      `[${new Date().toISOString()}] ERROR: ${error.message}\n`
-    );
-
-    // Distinguish internal "99" exit pattern
-    if (error.code === 99) {
-      console.warn("⚠️ Exit code 99 caught, normalizing to success (0).");
-      process.exit(0);
-    } else {
-      process.exit(1);
-    }
-  }
-}
-
-// === Main Runner ===
-(async () => {
-  try {
-    await sendMail();
   } catch (err) {
-    // Catch fallback 99 normalization here too
-    if (err.code === 99) {
-      console.warn("⚠️ Global handler: Exit code 99 normalized to success.");
-      process.exit(0);
-    } else {
-      console.error("❌ Fatal error:", err);
-      process.exit(1);
-    }
+    writeLog(`Fatal error: ${err.message}`);
+    process.exitCode = 1;
+  } finally {
+    process.exit();
   }
 })();
