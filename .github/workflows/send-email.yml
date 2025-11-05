@@ -36,9 +36,7 @@ jobs:
       # -------------------------------------------------------------
       - name: Ensure directories exist
         run: |
-          mkdir -p LOGS
-          mkdir -p SENT
-          mkdir -p SCHEDULE
+          mkdir -p LOGS SENT SCHEDULE
 
       # -------------------------------------------------------------
       # STEP 5 – RUN EMAIL SERVICE (Gmail OAuth2)
@@ -66,7 +64,7 @@ jobs:
       # STEP 7 – SEND DAILY SUMMARY
       # -------------------------------------------------------------
       - name: Send daily summary
-        if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 22')
+        if: github.event_name == 'schedule' && github.event.schedule == '0 22 * * *'
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
@@ -76,8 +74,8 @@ jobs:
           SUMMARY="LOGS/email_status.log"
           if [ -f "$SUMMARY" ]; then
             SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
-            BODY="$(cat $SUMMARY)"
-            RECIPIENT="${{ secrets.GMAIL_USER }}"
+            BODY="$(cat "$SUMMARY")"
+            RECIPIENT="${GMAIL_USER}"
             echo "Sending daily summary to $RECIPIENT..."
             SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node email-send.js
           else
