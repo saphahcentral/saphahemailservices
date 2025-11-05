@@ -1,3 +1,5 @@
+Subject: Welcome to our tornado email series!
+
 Hello {{name}},  
 
 Welcome to the Tornado Funnel! 🎉  
