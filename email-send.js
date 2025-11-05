@@ -1,48 +1,35 @@
-/**
- * SAPHAH Central Email Service
- * Unified version — supports:
- *  1️⃣ Funnel emails (header + body + footer)
- *  2️⃣ Daily summary emails
- *  3️⃣ Logging and Firestore sequence management
- */
-
-import { format } from "date-fns";
-import nodemailer from "nodemailer";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { initializeApp, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+// email-send.js — SAPHAH Funnel Email Automation
+// -------------------------------------------------------------
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { format } from 'date-fns';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import nodemailer from 'nodemailer';
 
 // -------------------------------------------------------------
-// Helpers for __dirname in ES modules
+// Helpers
 // -------------------------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// -------------------------------------------------------------
-// Current UTC time
-// -------------------------------------------------------------
 const now = new Date();
-const formattedNow = format(now, "yyyy-MM-dd HH:mm:ss") + " UTC";
-console.log(`Current UTC time: ${formattedNow}`);
+const formattedNow = format(now, 'yyyy-MM-dd HH:mm:ss') + ' UTC';
 
 // -------------------------------------------------------------
-// Firebase initialization
+// Firebase initialization (service account from secret)
 // -------------------------------------------------------------
-if (process.env.EMAILFIREBASEADMIN) {
-  const serviceAccount = JSON.parse(process.env.EMAILFIREBASEADMIN);
-  initializeApp({ credential: cert(serviceAccount) });
-}
+const serviceAccount = JSON.parse(process.env.EMAILFIREBASEADMIN);
+initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 
 // -------------------------------------------------------------
 // Gmail OAuth2 transporter
 // -------------------------------------------------------------
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  service: 'gmail',
   auth: {
-    type: "OAuth2",
+    type: 'OAuth2',
     user: process.env.GMAIL_USER,
     clientId: process.env.GMAIL_CLIENT_ID,
     clientSecret: process.env.GMAIL_CLIENT_SECRET,
@@ -51,54 +38,123 @@ const transporter = nodemailer.createTransport({
 });
 
 // -------------------------------------------------------------
-// File utilities
+// Utility: Parse funnel email file
 // -------------------------------------------------------------
-const readFile = (file) =>
-  fs.existsSync(path.join(__dirname, file))
-    ? fs.readFileSync(path.join(__dirname, file), "utf-8").trim()
-    : "";
+function parseEmailFile(filepath) {
+  const content = fs.readFileSync(filepath, 'utf8');
+  const parts = content.split(/---HEADER---|---BODY---|---FOOTER---/g).map(p => p.trim());
+  const subject = parts[0].replace(/^Subject:\s*/i, '').trim();
+  const header = parts[1] || '';
+  const body = parts[2] || '';
+  const footer = parts[3] || '';
+  return { subject, header, body, footer };
+}
 
-const logDir = path.join(__dirname, "LOGS");
-const logFile = path.join(logDir, "email_status.log");
-if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+// -------------------------------------------------------------
+// Utility: Personalize message with name/date
+// -------------------------------------------------------------
+function personalize(template, subscriber) {
+  return template
+    .replace(/\${name}/g, subscriber.name || 'Friend')
+    .replace(/\${date}/g, formattedNow);
+}
 
 // -------------------------------------------------------------
-// Send email function
+// Send a single email
 // -------------------------------------------------------------
-async function sendEmail({ to, subject, text }) {
+async function sendEmail(subscriber, emailData) {
+  const { subject, header, body, footer } = emailData;
+
+  const text = [
+    personalize(header, subscriber),
+    '',
+    personalize(body, subscriber),
+    '',
+    personalize(footer, subscriber),
+  ].join('\n');
+
   try {
     const info = await transporter.sendMail({
-      from: `SAPHAH Central <${process.env.GMAIL_USER}>`,
-      to,
-      subject,
+      from: process.env.GMAIL_USER,
+      to: subscriber.email,
+      subject: personalize(subject, subscriber),
       text,
     });
-    console.log(`✅ Email sent: ${subject} → ${to}`);
-    fs.appendFileSync(
-      logFile,
-      `${formattedNow} - Email sent to ${to} (${subject})\n`,
-      "utf8"
-    );
-    return info;
+
+    console.log(`✅ Sent to ${subscriber.email} — ${info.messageId}`);
+    return true;
   } catch (err) {
-    console.error(`❌ Error sending to ${to}: ${err.message}`);
-    fs.appendFileSync(
-      logFile,
-      `${formattedNow} - FAILED to send to ${to}: ${err.message}\n`,
-      "utf8"
-    );
+    console.error(`❌ Error sending to ${subscriber.email}:`, err);
+    return false;
   }
 }
 
 // -------------------------------------------------------------
-// Funnel Email Builder (Subject + Header + Body + Footer)
+// Load all funnel emails
 // -------------------------------------------------------------
-function buildEmail(funnelFile, name = "Friend") {
-  const headerText = readFile("header.txt");
-  const footerText = readFile("footer.txt");
-  const content = readFile(funnelFile);
-  if (!content) throw new Error(`Funnel file not found: ${funnelFile}`);
+function loadFunnelEmails() {
+  const emailDir = path.join(__dirname, 'emails');
+  const files = fs.readdirSync(emailDir).filter(f => f.endsWith('.txt'));
+  return files.sort().map(f => parseEmailFile(path.join(emailDir, f)));
+}
 
-  const lines = content.split("\n");
-  const subjectLine = lines.find((l) => l.startsWith("Subject:"));
-  const
+// -------------------------------------------------------------
+// Main: process subscribers
+// -------------------------------------------------------------
+async function main() {
+  console.log(`\n🚀 SAPHAH Funnel Sender started at ${formattedNow}\n`);
+  const funnel = loadFunnelEmails();
+
+  const snapshot = await db
+    .collection('subscribers')
+    .where('confirmed', '==', true)
+    .where('unsubscribed', '==', false)
+    .get();
+
+  const logDir = path.join(__dirname, 'LOGS');
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  const logFile = path.join(logDir, 'email_status.log');
+
+  for (const doc of snapshot.docs) {
+    const sub = doc.data();
+    const id = doc.id;
+
+    // Determine which email to send next
+    const index = sub.sequence_index || 0;
+    if (index >= funnel.length) {
+      console.log(`ℹ️ ${sub.email} has completed the funnel.`);
+      continue;
+    }
+
+    // Check next_send_date
+    const nextSend = sub.next_send_date ? sub.next_send_date.toDate() : null;
+    if (nextSend && nextSend > now) {
+      console.log(`⏭️ Skipping ${sub.email} — next send at ${nextSend}`);
+      continue;
+    }
+
+    const emailData = funnel[index];
+    const sent = await sendEmail(sub, emailData);
+
+    if (sent) {
+      const nextDate = new Date(now);
+      nextDate.setDate(nextDate.getDate() + 1);
+
+      await db.collection('subscribers').doc(id).update({
+        sequence_index: index + 1,
+        welcome_sent: true,
+        next_send_date: nextDate,
+      });
+
+      const logLine = `${formattedNow} — Sent ${emailData.subject} to ${sub.email}\n`;
+      fs.appendFileSync(logFile, logLine, 'utf8');
+    }
+  }
+
+  console.log('\n✅ All eligible subscribers processed.\n');
+}
+
+main().catch((err) => {
+  console.error('Email service failed:', err);
+  process.exit(1);
+});
