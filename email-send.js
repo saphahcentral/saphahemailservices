@@ -1,166 +1,146 @@
 /**
- * Gmail OAuth2 Email Sender — Final Version
- * Now with no-duplicate-send safeguard + full SENT logging
+ * email-send.js
+ * Handles subscriber funnel emails only.
+ *
+ * Logic:
+ * - If welcome_sent == false → send welcome email immediately.
+ * - If welcome_sent == true and current time >= next_send (08h00 SAST) → send next funnel email.
+ * - After each send, update next_send = next weekday 08h00 SAST and sequence_index += 1.
  */
 
-const fs = require("fs");
-const path = require("path");
-const nodemailer = require("nodemailer");
-const { google } = require("googleapis");
+import mysql from 'mysql2/promise';
+import nodemailer from 'nodemailer';
+import { format, addDays, isSaturday, isSunday } from 'date-fns';
+import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz';
 
-// === OAuth2 setup ===
-const {
-  GMAIL_CLIENT_ID,
-  GMAIL_CLIENT_SECRET,
-  GMAIL_REFRESH_TOKEN,
-  GMAIL_USER,
-} = process.env;
+// === DATABASE CONFIG ===
+const db = await mysql.createConnection({
+  host: 'localhost',
+  user: 'root',
+  password: 'yourpassword',
+  database: 'saphahemailservice'
+});
 
-const oAuth2Client = new google.auth.OAuth2(
-  GMAIL_CLIENT_ID,
-  GMAIL_CLIENT_SECRET,
-  "https://developers.google.com/oauthplayground"
-);
-oAuth2Client.setCredentials({ refresh_token: GMAIL_REFRESH_TOKEN });
-
-// === Directories ===
-const baseDir = __dirname;
-const scheduleDir = path.join(baseDir, "SCHEDULE");
-const emailsDir = path.join(baseDir, "EMAILS");
-const sentDir = path.join(baseDir, "SENT");
-const logFile = path.join(baseDir, "email_status.log");
-
-// === Helpers ===
-function writeLog(message) {
-  const entry = `[${new Date().toISOString()}] ${message}\n`;
-  fs.appendFileSync(logFile, entry, "utf8");
-  console.log(entry.trim());
-}
-
-function safeRead(filePath) {
-  return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8").trim() : "";
-}
-
-function recipientAlreadySent(recipient) {
-  if (!fs.existsSync(sentDir)) return false;
-  const sentFiles = fs.readdirSync(sentDir);
-  const sanitized = recipient.replace(/[@.]/g, "_");
-  return sentFiles.some((f) => f.includes(sanitized));
-}
-
-// === Create SENT dir if missing ===
-if (!fs.existsSync(sentDir)) fs.mkdirSync(sentDir);
-
-// === Load static parts ===
-const header = safeRead(path.join(emailsDir, "header.txt"));
-const footer = safeRead(path.join(emailsDir, "footer.txt"));
-const welcome = safeRead(path.join(emailsDir, "welcome.txt"));
-
-// === Read schedule ===
-const files = fs.existsSync(scheduleDir)
-  ? fs.readdirSync(scheduleDir).filter((f) => f.endsWith(".txt"))
-  : [];
-
-if (files.length === 0 || (files.length === 1 && files[0] === "0.txt")) {
-  writeLog("No schedule detected. Skipping send.");
-  process.exitCode = 0;
-  process.exit();
-}
-
-// === Begin process ===
-(async () => {
-  try {
-    const accessToken = await oAuth2Client.getAccessToken();
-
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        type: "OAuth2",
-        user: GMAIL_USER,
-        clientId: GMAIL_CLIENT_ID,
-        clientSecret: GMAIL_CLIENT_SECRET,
-        refreshToken: GMAIL_REFRESH_TOKEN,
-        accessToken: accessToken.token,
-      },
-    });
-
-    // === Prepare recipient list ===
-    const recipients = [];
-    for (const file of files) {
-      const email = fs.readFileSync(path.join(scheduleDir, file), "utf8").trim();
-      if (
-        email &&
-        email !== "test@example.com" &&
-        !recipientAlreadySent(email)
-      ) {
-        recipients.push(email);
-      } else if (recipientAlreadySent(email)) {
-        writeLog(`Skipped duplicate: ${email}`);
-      }
-    }
-
-    if (recipients.length === 0) {
-      writeLog("No valid unsent recipients found. Exiting gracefully.");
-      process.exitCode = 0;
-      process.exit();
-    }
-
-    // === Email details ===
-    const subject = "Automated Notice from SCS / DOTS Service";
-    const htmlBody = `
-      ${header}
-      ${welcome}
-      ${footer}
-    `;
-
-    // === Send loop ===
-    for (const recipient of recipients) {
-      try {
-        await transporter.sendMail({
-          from: `Saphahemailservices <${GMAIL_USER}>`,
-          to: recipient,
-          subject,
-          html: htmlBody,
-        });
-
-        writeLog(`Email sent to ${recipient}`);
-
-        // Write SENT record
-        const sentCopy = `
-===============================
- SENT EMAIL LOG
-===============================
-Date: ${new Date().toISOString()}
-To: ${recipient}
-From: ${GMAIL_USER}
-Subject: ${subject}
--------------------------------
-[HEADER]
-${header}
--------------------------------
-[BODY]
-${welcome}
--------------------------------
-[FOOTER]
-${footer}
-===============================
-`;
-        const sentFile = path.join(
-          sentDir,
-          `${Date.now()}-${recipient.replace(/[@.]/g, "_")}.txt`
-        );
-        fs.writeFileSync(sentFile, sentCopy.trim(), "utf8");
-      } catch (err) {
-        writeLog(`Error sending to ${recipient}: ${err.message}`);
-      }
-    }
-
-    writeLog("Email batch completed successfully.");
-    process.exitCode = 0;
-  } catch (err) {
-    writeLog(`Fatal error: ${err.message}`);
-    process.exitCode = 1;
-  } finally {
-    process.exit();
+// === MAIL TRANSPORT CONFIG ===
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'youremail@gmail.com',
+    pass: 'your-app-password'
   }
-})();
+});
+
+// === HELPER FUNCTIONS ===
+
+// Get current time in South Africa
+function nowSAST() {
+  return utcToZonedTime(new Date(), 'Africa/Johannesburg');
+}
+
+// Compute next weekday 08h00 SAST
+function nextWeekday08h00() {
+  let next = addDays(nowSAST(), 1);
+  // Skip weekends
+  if (isSaturday(next)) next = addDays(next, 2);
+  if (isSunday(next)) next = addDays(next, 1);
+  next.setHours(8, 0, 0, 0);
+  return zonedTimeToUtc(next, 'Africa/Johannesburg'); // store in UTC in DB
+}
+
+// === EMAIL SEQUENCE TEMPLATES ===
+const funnelEmails = [
+  { id: 1, subject: "Welcome to Our Family!", template: "welcome.html" },
+  { id: 2, subject: "Discover More About Us", template: "email2.html" },
+  { id: 3, subject: "Our Vision and Mission", template: "email3.html" },
+  { id: 4, subject: "Stay Connected", template: "email4.html" }
+];
+
+// === MAIN FUNNEL FUNCTION ===
+async function processFunnelEmails() {
+  console.log(`[${format(nowSAST(), 'yyyy-MM-dd HH:mm')}] Checking subscribers...`);
+
+  const [rows] = await db.execute('SELECT * FROM subscribers');
+  for (const user of rows) {
+    const { email, name, welcome_sent, next_send, sequence_index } = user;
+
+    // 1️⃣ Welcome email logic
+    if (!welcome_sent) {
+      console.log(`→ Sending welcome email to ${email}`);
+      await sendEmail(email, name, funnelEmails[0]);
+      const nextSend = nextWeekday08h00();
+      await db.execute(
+        'UPDATE subscribers SET welcome_sent = ?, sequence_index = ?, next_send = ? WHERE email = ?',
+        [true, 1, nextSend, email]
+      );
+      continue;
+    }
+
+    // 2️⃣ Funnel sequence logic
+    if (welcome_sent && next_send && new Date() >= new Date(next_send)) {
+      const seq = sequence_index + 1;
+      const nextEmail = funnelEmails.find(e => e.id === seq);
+
+      if (!nextEmail) {
+        console.log(`✔️ Sequence complete for ${email}.`);
+        await db.execute('UPDATE subscribers SET next_send = NULL WHERE email = ?', [email]);
+        continue;
+      }
+
+      console.log(`→ Sending funnel email #${seq} to ${email}`);
+      await sendEmail(email, name, nextEmail);
+      const nextSend = nextWeekday08h00();
+      await db.execute(
+        'UPDATE subscribers SET sequence_index = ?, next_send = ? WHERE email = ?',
+        [seq, nextSend, email]
+      );
+    }
+  }
+
+  console.log('✅ Funnel email process complete.');
+}
+
+// === EMAIL SENDER ===
+async function sendEmail(to, name, emailData) {
+  const html = await getTemplate(emailData.template, { name });
+  await transporter.sendMail({
+    from: '"Saphahemailservice" <youremail@gmail.com>',
+    to,
+    subject: emailData.subject,
+    html
+  });
+}
+
+// === LOAD TEMPLATE FUNCTION ===
+import fs from 'fs/promises';
+async function getTemplate(templateName, vars = {}) {
+  let html = await fs.readFile(`./templates/${templateName}`, 'utf8');
+  for (const [key, value] of Object.entries(vars)) {
+    html = html.replace(new RegExp(`{{${key}}}`, 'g'), value);
+  }
+  return html;
+}
+
+// === RUN AUTOMATICALLY AT 08:00 SAST ===
+async function runDaily() {
+  const now = nowSAST();
+  const targetHour = 8;
+  const targetMinute = 0;
+
+  const nextRun = new Date(now);
+  nextRun.setHours(targetHour, targetMinute, 0, 0);
+
+  if (now > nextRun) nextRun.setDate(nextRun.getDate() + 1);
+  const msUntilRun = nextRun - now;
+
+  console.log(
+    `⏰ Next funnel check scheduled for ${format(nextRun, 'yyyy-MM-dd HH:mm')} SAST`
+  );
+
+  setTimeout(async () => {
+    await processFunnelEmails();
+    runDaily();
+  }, msUntilRun);
+}
+
+// Start the scheduler
+runDaily();
