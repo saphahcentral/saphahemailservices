@@ -1,3 +1,5 @@
+Subject: 17. Traffic flow.
+
 Now that you have traffic and a micro-offer, link them all together.
 
 Your funnel should look like this:
