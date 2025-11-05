@@ -1,3 +1,5 @@
+Subject: 4. Turn purpose into structure.
+
 Now we turn purpose into structure.
 
 Create three simple sections:
