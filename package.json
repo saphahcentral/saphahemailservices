@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Internal serverless email service for SCS and DOTS consoles",
   "main": "send-email.js",
+  "type": "module",
   "scripts": {
     "start": "node send-email.js"
   },
