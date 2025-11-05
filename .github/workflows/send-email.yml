@@ -4,7 +4,7 @@ on:
   workflow_dispatch:        # manual trigger
   schedule:
     - cron: "0 * * * *"     # every hour
-    - cron: "0 22 * * *"    # daily summary at 00:00 SAST
+    - cron: "0 22 * * *"    # daily summary at 00:00 SAST (22:00 UTC)
 
 jobs:
   email-job:
@@ -32,13 +32,13 @@ jobs:
         run: npm install
 
       # -------------------------------------------------------------
-      # STEP 4 – ENSURE LOG/SENT DIRECTORIES EXIST
+      # STEP 4 – ENSURE LOG/SENT/SCHEDULE DIRECTORIES EXIST
       # -------------------------------------------------------------
       - name: Ensure directories exist
         run: |
-          mkdir -p logs
-          mkdir -p sent
-          mkdir -p scheduled
+          mkdir -p LOGS
+          mkdir -p SENT
+          mkdir -p SCHEDULE
 
       # -------------------------------------------------------------
       # STEP 5 – RUN EMAIL SERVICE (Gmail OAuth2)
@@ -58,7 +58,7 @@ jobs:
         run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "actions@github.com"
-          git add logs sent || true
+          git add SENT LOGS || true
           git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
           git push origin main || true
 
@@ -73,7 +73,7 @@ jobs:
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
         run: |
-          SUMMARY="logs/email-log-$(date -d '+2 hours' +%Y-%m-%d).txt"
+          SUMMARY="LOGS/email_status.log"
           if [ -f "$SUMMARY" ]; then
             SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
             BODY="$(cat $SUMMARY)"
