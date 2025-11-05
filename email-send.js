@@ -1,5 +1,4 @@
 // email-send.js
-import * as dateFnsTz from 'date-fns-tz';
 import { format } from 'date-fns';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
@@ -13,16 +12,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // -------------------------------------------------------------
-// Timezone functions
+// Current UTC time
 // -------------------------------------------------------------
-const { utcToZonedTime, zonedTimeToUtc } = dateFnsTz;
-
-// Example: convert current UTC time to Africa/Johannesburg
-const timeZone = 'Africa/Johannesburg';
 const now = new Date();
-const zonedNow = utcToZonedTime(now, timeZone);
-const formattedNow = format(zonedNow, 'yyyy-MM-dd HH:mm:ss');
-console.log(`Current time in ${timeZone}: ${formattedNow}`);
+const formattedNow = format(now, 'yyyy-MM-dd HH:mm:ss') + ' UTC';
+console.log(`Current UTC time: ${formattedNow}`);
 
 // -------------------------------------------------------------
 // Gmail OAuth2 transporter
@@ -58,30 +52,40 @@ async function sendEmail({ to, subject, text }) {
 }
 
 // -------------------------------------------------------------
-// Determine if running daily summary or single email
+// Paths
 // -------------------------------------------------------------
-const summaryLogPath = path.join(__dirname, 'LOGS', 'email_status.log');
+const logDir = path.join(__dirname, 'LOGS');
+const logFile = path.join(logDir, 'email_status.log');
 
-if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
-  // Daily summary mode
-  sendEmail({
-    to: process.env.RECIPIENT,
-    subject: process.env.SUBJECT,
-    text: process.env.BODY,
-  });
-} else {
-  // Example: single test email
-  const recipient = process.env.GMAIL_USER;
-  const subject = `Test email from Saphahemailservices ${formattedNow}`;
-  const body = `Hello,\n\nThis is a test email sent at ${formattedNow}.\n\nRegards,\nSaphahemailservices`;
+// Ensure log directory exists
+if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
 
-  sendEmail({
-    to: recipient,
-    subject,
-    text: body,
-  }).then(() => {
+// -------------------------------------------------------------
+// Determine mode: daily summary or normal email
+// -------------------------------------------------------------
+async function main() {
+  if (process.env.SUBJECT && process.env.BODY && process.env.RECIPIENT) {
+    // Daily summary mode
+    await sendEmail({
+      to: process.env.RECIPIENT,
+      subject: process.env.SUBJECT,
+      text: process.env.BODY,
+    });
+  } else {
+    // Hourly / test email
+    const recipient = process.env.GMAIL_USER;
+    const subject = `Saphahemailservices Test Email - ${formattedNow}`;
+    const body = `Hello,\n\nThis is a test email sent at ${formattedNow}.\n\nRegards,\nSaphahemailservices`;
+
+    await sendEmail({ to: recipient, subject, text: body });
+
     // Append to log
     const logLine = `${formattedNow} - Email sent to ${recipient}\n`;
-    fs.appendFileSync(summaryLogPath, logLine, 'utf8');
-  });
+    fs.appendFileSync(logFile, logLine, 'utf8');
+  }
 }
+
+main().catch((err) => {
+  console.error('Email service failed:', err);
+  process.exit(1);
+});
