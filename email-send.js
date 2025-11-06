@@ -20,6 +20,7 @@ const formattedNow = format(now, 'yyyy-MM-dd HH:mm:ss') + ' UTC';
 // Firebase initialization (service account from secret)
 // -------------------------------------------------------------
 const serviceAccount = JSON.parse(process.env.EMAILFIREBASEADMIN);
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
 initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 
