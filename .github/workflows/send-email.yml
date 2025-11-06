@@ -49,7 +49,7 @@ jobs:
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           EMAILFIREBASEADMIN: ${{ secrets.EMAILFIREBASEADMIN }}
-        run: node send-email.js
+        run: node email-send.js
 
       # -------------------------------------------------------------
       # STEP 6 – COMMIT SENT EMAILS AND LOGS
@@ -80,7 +80,7 @@ jobs:
             BODY="$(cat "$SUMMARY")"
             RECIPIENT="${GMAIL_USER}"
             echo "Sending daily summary to $RECIPIENT..."
-            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node send-email.js
+            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node email-send.js
           else
             echo "No log found for today. Skipping summary."
           fi
