@@ -1,4 +1,4 @@
-// email-send.js — SAPHAH Funnel Email Automation
+// email-send.js — SAPHAH Funnel + DOM6027 Notifications
 // -------------------------------------------------------------
 import fs from 'fs';
 import path from 'path';
@@ -24,13 +24,24 @@ initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 
 // -------------------------------------------------------------
-// Gmail OAuth2 transporter
+// Gmail transporters
 // -------------------------------------------------------------
-const transporter = nodemailer.createTransport({
+const funnelTransporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     type: 'OAuth2',
     user: process.env.GMAIL_USER,
+    clientId: process.env.GMAIL_CLIENT_ID,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN,
+  },
+});
+
+const dom6027Transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    type: 'OAuth2',
+    user: 'bessingerbackup2024+dom6027@gmail.com',
     clientId: process.env.GMAIL_CLIENT_ID,
     clientSecret: process.env.GMAIL_CLIENT_SECRET,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN,
@@ -53,7 +64,7 @@ function parseEmailFile(filepath) {
 // -------------------------------------------------------------
 // Utility: Personalize message with name/date
 // -------------------------------------------------------------
-function personalize(template, subscriber) {
+function personalize(template, subscriber = {}) {
   return template
     .replace(/\${name}/g, subscriber.name || 'Friend')
     .replace(/\${date}/g, formattedNow);
@@ -93,11 +104,10 @@ function markSentLocal(email, subject) {
 // -------------------------------------------------------------
 // Send a single email
 // -------------------------------------------------------------
-async function sendEmail(subscriber, emailData) {
+async function sendEmailTo(subscriber, emailData, transporter) {
   const { subject, header, body, footer } = emailData;
   const personalizedSubject = personalize(subject, subscriber);
 
-  // --- Duplicate prevention check ---
   if (alreadySentLocal(subscriber.email, personalizedSubject) ||
       await alreadySentFirestore(subscriber.email, personalizedSubject)) {
     console.log(`⏭️ Skipping duplicate: ${subscriber.email} — "${personalizedSubject}"`);
@@ -114,7 +124,7 @@ async function sendEmail(subscriber, emailData) {
 
   try {
     const info = await transporter.sendMail({
-      from: process.env.GMAIL_USER,
+      from: transporter.options.auth.user,
       to: subscriber.email,
       subject: personalizedSubject,
       text,
@@ -140,12 +150,20 @@ function loadFunnelEmails() {
 }
 
 // -------------------------------------------------------------
-// Main: process subscribers
+// Load DOM6027 SCHEDULE files
 // -------------------------------------------------------------
-async function main() {
-  console.log(`\n🚀 SAPHAH Funnel Sender started at ${formattedNow}\n`);
-  const funnel = loadFunnelEmails();
+function loadDOM6027Schedule() {
+  const scheduleDir = path.join(__dirname, 'SCHEDULE');
+  if (!fs.existsSync(scheduleDir)) return [];
+  return fs.readdirSync(scheduleDir)
+    .filter(f => /^DOM6027-[A-Z]+-\d{8}\.txt$/i.test(f))
+    .map(f => path.join(scheduleDir, f));
+}
 
+// -------------------------------------------------------------
+// Process funnel subscribers
+// -------------------------------------------------------------
+async function processFunnelSubscribers(funnel) {
   const snapshot = await db
     .collection('subscribers')
     .where('confirmed', '==', true)
@@ -160,14 +178,12 @@ async function main() {
     const sub = doc.data();
     const id = doc.id;
 
-    // Determine which email to send next
     const index = sub.sequence_index || 0;
     if (index >= funnel.length) {
       console.log(`ℹ️ ${sub.email} has completed the funnel.`);
       continue;
     }
 
-    // Check next_send_date
     const nextSend = sub.next_send_date ? sub.next_send_date.toDate() : null;
     if (nextSend && nextSend > now) {
       console.log(`⏭️ Skipping ${sub.email} — next send at ${nextSend}`);
@@ -175,7 +191,7 @@ async function main() {
     }
 
     const emailData = funnel[index];
-    const sent = await sendEmail(sub, emailData);
+    const sent = await sendEmailTo(sub, emailData, funnelTransporter);
 
     if (sent) {
       const nextDate = new Date(now);
@@ -187,15 +203,53 @@ async function main() {
         next_send_date: nextDate,
       });
 
-      const logLine = `${formattedNow} — Sent ${emailData.subject} to ${sub.email}\n`;
-      fs.appendFileSync(logFile, logLine, 'utf8');
+      fs.appendFileSync(logFile, `${formattedNow} — Sent ${emailData.subject} to ${sub.email}\n`, 'utf8');
     }
   }
-
-  console.log('\n✅ All eligible subscribers processed.\n');
 }
 
-main().catch((err) => {
+// -------------------------------------------------------------
+// Process DOM6027 notifications
+// -------------------------------------------------------------
+async function processDOM6027Notifications() {
+  const scheduleFiles = loadDOM6027Schedule();
+  if (scheduleFiles.length === 0) return;
+
+  const logDir = path.join(__dirname, 'LOGS');
+  const logFile = path.join(logDir, 'email_status.log');
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+
+  for (const file of scheduleFiles) {
+    const content = fs.readFileSync(file, 'utf8');
+    const lines = content.split(/\r?\n/);
+    const subject = lines[0] || 'DOM6027 Notification';
+    const body = lines.slice(1).join('\n');
+
+    const subscriber = { email: 'LASTWARNERS2024@googlegroups.com', name: 'Friends' };
+
+    const sent = await sendEmailTo(subscriber, { subject, header: '', body, footer: '' }, dom6027Transporter);
+
+    if (sent) {
+      fs.appendFileSync(logFile, `${formattedNow} — Sent DOM6027 notification: ${subject}\n`, 'utf8');
+      fs.renameSync(file, file + '.sent');
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// Main execution
+// -------------------------------------------------------------
+async function main() {
+  console.log(`\n🚀 SAPHAH Email Service started at ${formattedNow}\n`);
+
+  const funnel = loadFunnelEmails();
+  await processFunnelSubscribers(funnel);
+  await processDOM6027Notifications();
+
+  console.log('\n✅ All emails processed.\n');
+}
+
+main().catch(err => {
   console.error('Email service failed:', err);
   process.exit(1);
 });
