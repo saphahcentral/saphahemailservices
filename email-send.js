@@ -60,10 +60,49 @@ function personalize(template, subscriber) {
 }
 
 // -------------------------------------------------------------
+// Duplicate prevention helpers
+// -------------------------------------------------------------
+const SENT_DIR = path.resolve('SENT');
+if (!fs.existsSync(SENT_DIR)) fs.mkdirSync(SENT_DIR, { recursive: true });
+
+async function alreadySentFirestore(email, subject) {
+  const id = `${email}_${subject.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const doc = await db.collection('sentEmails').doc(id).get();
+  return doc.exists;
+}
+
+async function markSentFirestore(email, subject) {
+  const id = `${email}_${subject.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  await db.collection('sentEmails').doc(id).set({
+    email,
+    subject,
+    sentAt: new Date().toISOString(),
+  });
+}
+
+function alreadySentLocal(email, subject) {
+  const file = path.join(SENT_DIR, `${email}_${subject.replace(/[^a-zA-Z0-9]/g, '_')}.sent`);
+  return fs.existsSync(file);
+}
+
+function markSentLocal(email, subject) {
+  const file = path.join(SENT_DIR, `${email}_${subject.replace(/[^a-zA-Z0-9]/g, '_')}.sent`);
+  fs.writeFileSync(file, formattedNow, 'utf8');
+}
+
+// -------------------------------------------------------------
 // Send a single email
 // -------------------------------------------------------------
 async function sendEmail(subscriber, emailData) {
   const { subject, header, body, footer } = emailData;
+  const personalizedSubject = personalize(subject, subscriber);
+
+  // --- Duplicate prevention check ---
+  if (alreadySentLocal(subscriber.email, personalizedSubject) ||
+      await alreadySentFirestore(subscriber.email, personalizedSubject)) {
+    console.log(`⏭️ Skipping duplicate: ${subscriber.email} — "${personalizedSubject}"`);
+    return false;
+  }
 
   const text = [
     personalize(header, subscriber),
@@ -77,11 +116,13 @@ async function sendEmail(subscriber, emailData) {
     const info = await transporter.sendMail({
       from: process.env.GMAIL_USER,
       to: subscriber.email,
-      subject: personalize(subject, subscriber),
+      subject: personalizedSubject,
       text,
     });
 
     console.log(`✅ Sent to ${subscriber.email} — ${info.messageId}`);
+    markSentLocal(subscriber.email, personalizedSubject);
+    await markSentFirestore(subscriber.email, personalizedSubject);
     return true;
   } catch (err) {
     console.error(`❌ Error sending to ${subscriber.email}:`, err);
