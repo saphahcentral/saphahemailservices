@@ -1,4 +1,4 @@
-// email-send.js — SAPHAH Funnel + DOM6027 Notifications
+// email-send.js — SAPHAH Funnel + DOM6027 + AD HOC SCHEDULE emails
 // -------------------------------------------------------------
 import fs from 'fs';
 import path from 'path';
@@ -25,41 +25,38 @@ initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 
 // -------------------------------------------------------------
-// Gmail transporters
+// Gmail transporter utility
 // -------------------------------------------------------------
-const funnelTransporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    type: 'OAuth2',
-    user: process.env.GMAIL_USER,
-    clientId: process.env.GMAIL_CLIENT_ID,
-    clientSecret: process.env.GMAIL_CLIENT_SECRET,
-    refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-  },
-});
-
-const dom6027Transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    type: 'OAuth2',
-    user: 'bessingerbackup2024+dom6027@gmail.com',
-    clientId: process.env.GMAIL_CLIENT_ID,
-    clientSecret: process.env.GMAIL_CLIENT_SECRET,
-    refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-  },
-});
+function createTransporter(shortSender) {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      type: 'OAuth2',
+      user: `bessingerbackup2024+${shortSender}@gmail.com`,
+      clientId: process.env.GMAIL_CLIENT_ID,
+      clientSecret: process.env.GMAIL_CLIENT_SECRET,
+      refreshToken: process.env.GMAIL_REFRESH_TOKEN,
+    },
+  });
+}
 
 // -------------------------------------------------------------
-// Utility: Parse funnel email file
+// Parse template from EMAILS folder
 // -------------------------------------------------------------
-function parseEmailFile(filepath) {
-  const content = fs.readFileSync(filepath, 'utf8');
+function parseEmailTemplate(templateName) {
+  const templatePath = path.join(__dirname, 'EMAILS', templateName);
+  if (!fs.existsSync(templatePath)) {
+    console.warn(`Template not found: ${templateName}`);
+    return { subject: 'No Subject', header: '', body: '', footer: '' };
+  }
+  const content = fs.readFileSync(templatePath, 'utf8');
   const parts = content.split(/---HEADER---|---BODY---|---FOOTER---/g).map(p => p.trim());
-  const subject = parts[0].replace(/^Subject:\s*/i, '').trim();
-  const header = parts[1] || '';
-  const body = parts[2] || '';
-  const footer = parts[3] || '';
-  return { subject, header, body, footer };
+  return {
+    subject: parts[0] || 'No Subject',
+    header: parts[1] || '',
+    body: parts[2] || '',
+    footer: parts[3] || '',
+  };
 }
 
 // -------------------------------------------------------------
@@ -74,7 +71,7 @@ function personalize(template, subscriber = {}) {
 // -------------------------------------------------------------
 // Duplicate prevention helpers
 // -------------------------------------------------------------
-const SENT_DIR = path.resolve('SENT');
+const SENT_DIR = path.join(__dirname, 'SENT');
 if (!fs.existsSync(SENT_DIR)) fs.mkdirSync(SENT_DIR, { recursive: true });
 
 async function alreadySentFirestore(email, subject) {
@@ -142,69 +139,35 @@ async function sendEmailTo(subscriber, emailData, transporter) {
 }
 
 // -------------------------------------------------------------
-// Load all funnel emails
+// Process Funnel emails (from Firestore subscribers)
 // -------------------------------------------------------------
-function loadFunnelEmails() {
-  const emailDir = path.join(__dirname, 'emails');
-  const files = fs.readdirSync(emailDir).filter(f => f.endsWith('.txt'));
-  return files.sort().map(f => parseEmailFile(path.join(emailDir, f)));
-}
-
-// -------------------------------------------------------------
-// Load DOM6027 SCHEDULE files
-// -------------------------------------------------------------
-function loadDOM6027Schedule() {
-  const scheduleDir = path.join(__dirname, 'SCHEDULE');
-  if (!fs.existsSync(scheduleDir)) return [];
-  return fs.readdirSync(scheduleDir)
-    .filter(f => /^DOM6027-[A-Z]+-\d{8}\.txt$/i.test(f))
-    .map(f => path.join(scheduleDir, f));
-}
-
-// -------------------------------------------------------------
-// Process funnel subscribers
-// -------------------------------------------------------------
-async function processFunnelSubscribers(funnel) {
+async function processFunnelSubscribers() {
   const snapshot = await db
     .collection('subscribers')
     .where('confirmed', '==', true)
     .where('unsubscribed', '==', false)
     .get();
 
-  const logDir = path.join(__dirname, 'LOGS');
-  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-  const logFile = path.join(logDir, 'email_status.log');
-
   for (const doc of snapshot.docs) {
     const sub = doc.data();
     const id = doc.id;
+    const sequenceIndex = sub.sequence_index || 0;
 
-    const index = sub.sequence_index || 0;
-    if (index >= funnel.length) {
-      console.log(`ℹ️ ${sub.email} has completed the funnel.`);
-      continue;
-    }
+    // Load the template email (sequence based)
+    const templateFiles = fs.readdirSync(path.join(__dirname, 'EMAILS')).filter(f => f.endsWith('.txt'));
+    if (sequenceIndex >= templateFiles.length) continue;
+    const emailData = parseEmailTemplate(templateFiles[sequenceIndex]);
 
-    const nextSend = sub.next_send_date ? sub.next_send_date.toDate() : null;
-    if (nextSend && nextSend > now) {
-      console.log(`⏭️ Skipping ${sub.email} — next send at ${nextSend}`);
-      continue;
-    }
-
-    const emailData = funnel[index];
-    const sent = await sendEmailTo(sub, emailData, funnelTransporter);
+    const sent = await sendEmailTo(sub, emailData, createTransporter('scs6027email'));
 
     if (sent) {
       const nextDate = new Date(now);
       nextDate.setDate(nextDate.getDate() + 1);
 
       await db.collection('subscribers').doc(id).update({
-        sequence_index: index + 1,
-        welcome_sent: true,
+        sequence_index: sequenceIndex + 1,
         next_send_date: nextDate,
       });
-
-      fs.appendFileSync(logFile, `${formattedNow} — Sent ${emailData.subject} to ${sub.email}\n`, 'utf8');
     }
   }
 }
@@ -213,26 +176,34 @@ async function processFunnelSubscribers(funnel) {
 // Process DOM6027 notifications
 // -------------------------------------------------------------
 async function processDOM6027Notifications() {
-  const scheduleFiles = loadDOM6027Schedule();
-  if (scheduleFiles.length === 0) return;
+  const scheduleDir = path.join(__dirname, 'SCHEDULE');
+  if (!fs.existsSync(scheduleDir)) return;
 
-  const logDir = path.join(__dirname, 'LOGS');
-  const logFile = path.join(logDir, 'email_status.log');
-  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  const files = fs.readdirSync(scheduleDir)
+    .filter(f => /^DOM6027-.*\.txt$/i.test(f));
 
-  for (const file of scheduleFiles) {
-    const content = fs.readFileSync(file, 'utf8');
+  for (const file of files) {
+    const filePath = path.join(scheduleDir, file);
+    const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split(/\r?\n/);
-    const subject = lines[0] || 'DOM6027 Notification';
-    const body = lines.slice(1).join('\n');
+    if (!lines[0]) continue; // Skip blank first line placeholders like 0.txt
 
-    const subscriber = { email: 'LASTWARNERS2024@googlegroups.com', name: 'Friends' };
+    const [source, receiver, shortSender] = lines[0].split('|').map(s => s.trim());
+    if (!source || !receiver || !shortSender) {
+      console.warn(`Skipping invalid SCHEDULE file: ${file}`);
+      continue;
+    }
 
-    const sent = await sendEmailTo(subscriber, { subject, header: '', body, footer: '' }, dom6027Transporter);
+    const templateData = parseEmailTemplate(source);
+    const subscriber = { email: receiver, name: 'Friend' };
+    const transporter = createTransporter(shortSender);
+
+    const sent = await sendEmailTo(subscriber, templateData, transporter);
 
     if (sent) {
-      fs.appendFileSync(logFile, `${formattedNow} — Sent DOM6027 notification: ${subject}\n`, 'utf8');
-      fs.renameSync(file, file + '.sent');
+      const sentPath = path.join(__dirname, 'SENT', file);
+      fs.renameSync(filePath, sentPath);
+      console.log(`📦 Moved sent file to SENT: ${file}`);
     }
   }
 }
@@ -243,8 +214,7 @@ async function processDOM6027Notifications() {
 async function main() {
   console.log(`\n🚀 SAPHAH Email Service started at ${formattedNow}\n`);
 
-  const funnel = loadFunnelEmails();
-  await processFunnelSubscribers(funnel);
+  await processFunnelSubscribers();
   await processDOM6027Notifications();
 
   console.log('\n✅ All emails processed.\n');
