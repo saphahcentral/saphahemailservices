@@ -37,20 +37,25 @@ jobs:
       # -------------------------------------------------------------
       - name: Check for weekend pause
         run: |
+          mkdir -p LOGS
+          LOGFILE="LOGS/email_status.log"
           DAY=$(date -u +%u)
           HOUR=$(date -u +%H)
+          NOW=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
           echo "UTC Day: $DAY | Hour: $H"
 
           # Detect DOM6027 emails queued in SCHEDULE
           if ls SCHEDULE/*.txt 2>/dev/null | grep -q "DOM6027"; then
-            echo "DOM6027 email(s) detected — continuing despite weekend pause."
+            echo "$NOW — DOM6027 email(s) detected — continuing despite weekend pause." | tee -a "$LOGFILE"
           else
             # Pause from Friday 15:00 UTC through Monday 06:00 UTC
             if { [ "$DAY" -eq 5 ] && [ "$HOUR" -ge 15 ]; } || \
                [ "$DAY" -eq 6 ] || \
                { [ "$DAY" -eq 7 ] && [ "$HOUR" -lt 6 ]; }; then
-              echo "CLOSED FOR WEEKEND — non-DOM6027 emails paused."
+              echo "$NOW — CLOSED FOR WEEKEND — non-DOM6027 emails paused." | tee -a "$LOGFILE"
               exit 0
+            else
+              echo "$NOW — Normal weekday run — continuing." | tee -a "$LOGFILE"
             fi
           fi
 
