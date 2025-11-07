@@ -33,6 +33,28 @@ jobs:
           npm ci || npm install
 
       # -------------------------------------------------------------
+      # STEP 3B – WEEKEND PAUSE CHECK (EXCEPT DOM6027)
+      # -------------------------------------------------------------
+      - name: Check for weekend pause
+        run: |
+          DAY=$(date -u +%u)
+          HOUR=$(date -u +%H)
+          echo "UTC Day: $DAY | Hour: $H"
+
+          # Detect DOM6027 emails queued in SCHEDULE
+          if ls SCHEDULE/*.txt 2>/dev/null | grep -q "DOM6027"; then
+            echo "DOM6027 email(s) detected — continuing despite weekend pause."
+          else
+            # Pause from Friday 15:00 UTC through Monday 06:00 UTC
+            if { [ "$DAY" -eq 5 ] && [ "$HOUR" -ge 15 ]; } || \
+               [ "$DAY" -eq 6 ] || \
+               { [ "$DAY" -eq 7 ] && [ "$HOUR" -lt 6 ]; }; then
+              echo "CLOSED FOR WEEKEND — non-DOM6027 emails paused."
+              exit 0
+            fi
+          fi
+
+      # -------------------------------------------------------------
       # STEP 4 – ENSURE LOG/SENT/SCHEDULE DIRECTORIES EXIST
       # -------------------------------------------------------------
       - name: Ensure directories exist
