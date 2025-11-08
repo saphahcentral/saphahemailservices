@@ -41,14 +41,21 @@ function createTransporter(shortSender) {
 }
 
 // -------------------------------------------------------------
-// Parse template from EMAILS folder
+// Parse email template (from EMAILS/ or FUNNEL/)
 // -------------------------------------------------------------
 function parseEmailTemplate(templateName) {
-  const templatePath = path.join(__dirname, 'EMAILS', templateName);
-  if (!fs.existsSync(templatePath)) {
-    console.warn(`Template not found: ${templateName}`);
+  // Try EMAILS/ first, then FUNNEL/
+  const searchPaths = [
+    path.join(__dirname, 'EMAILS', templateName),
+    path.join(__dirname, 'FUNNEL', templateName),
+  ];
+
+  let templatePath = searchPaths.find(p => fs.existsSync(p));
+  if (!templatePath) {
+    console.warn(`⚠️ Template not found: ${templateName}`);
     return { subject: 'No Subject', header: '', body: '', footer: '' };
   }
+
   const content = fs.readFileSync(templatePath, 'utf8');
   const parts = content.split(/---HEADER---|---BODY---|---FOOTER---/g).map(p => p.trim());
   return {
@@ -142,19 +149,34 @@ async function sendEmailTo(subscriber, emailData, transporter) {
 // Process Funnel emails (from Firestore subscribers)
 // -------------------------------------------------------------
 async function processFunnelSubscribers() {
+  const funnelDir = path.join(__dirname, 'FUNNEL');
+  if (!fs.existsSync(funnelDir)) {
+    console.warn('⚠️ No FUNNEL directory found. Skipping funnel emails.');
+    return;
+  }
+
   const snapshot = await db
     .collection('subscribers')
     .where('confirmed', '==', true)
     .where('unsubscribed', '==', false)
     .get();
 
+  if (snapshot.empty) {
+    console.log('ℹ️ No active subscribers found.');
+    return;
+  }
+
+  const templateFiles = fs.readdirSync(funnelDir).filter(f => f.endsWith('.txt'));
+  if (templateFiles.length === 0) {
+    console.log('ℹ️ No funnel templates found.');
+    return;
+  }
+
   for (const doc of snapshot.docs) {
     const sub = doc.data();
     const id = doc.id;
     const sequenceIndex = sub.sequence_index || 0;
 
-    // Load the template email (sequence based)
-    const templateFiles = fs.readdirSync(path.join(__dirname, 'EMAILS')).filter(f => f.endsWith('.txt'));
     if (sequenceIndex >= templateFiles.length) continue;
     const emailData = parseEmailTemplate(templateFiles[sequenceIndex]);
 
@@ -173,11 +195,14 @@ async function processFunnelSubscribers() {
 }
 
 // -------------------------------------------------------------
-// Process DOM6027 notifications
+// Process DOM6027 notifications (from SCHEDULE folder)
 // -------------------------------------------------------------
 async function processDOM6027Notifications() {
   const scheduleDir = path.join(__dirname, 'SCHEDULE');
-  if (!fs.existsSync(scheduleDir)) return;
+  if (!fs.existsSync(scheduleDir)) {
+    console.warn('⚠️ No SCHEDULE directory found. Skipping DOM6027 notifications.');
+    return;
+  }
 
   const files = fs.readdirSync(scheduleDir)
     .filter(f => /^DOM6027-.*\.txt$/i.test(f));
@@ -186,7 +211,7 @@ async function processDOM6027Notifications() {
     const filePath = path.join(scheduleDir, file);
     const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split(/\r?\n/);
-    if (!lines[0]) continue; // Skip blank first line placeholders like 0.txt
+    if (!lines[0]) continue; // Skip blank placeholders
 
     const [source, receiver, shortSender] = lines[0].split('|').map(s => s.trim());
     if (!source || !receiver || !shortSender) {
