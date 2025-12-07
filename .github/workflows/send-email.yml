@@ -33,7 +33,7 @@ jobs:
           npm ci || npm install
 
       # -------------------------------------------------------------
-      # STEP 3B – WEEKEND PAUSE CHECK (EXCEPT DOM6027)
+      # STEP 3B – WEEKEND PAUSE CHECK
       # -------------------------------------------------------------
       - name: Check for weekend pause
         run: |
@@ -44,19 +44,14 @@ jobs:
           NOW=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
           echo "UTC Day: $DAY | Hour: $H"
 
-          # Detect DOM6027 emails queued in SCHEDULE
-          if ls SCHEDULE/*.txt 2>/dev/null | grep -q "DOM6027"; then
-            echo "$NOW — DOM6027 email(s) detected — continuing despite weekend pause." | tee -a "$LOGFILE"
+          # Pause from Friday 15:00 UTC through Monday 06:00 UTC
+          if { [ "$DAY" -eq 5 ] && [ "$HOUR" -ge 15 ]; } || \
+             [ "$DAY" -eq 6 ] || \
+             { [ "$DAY" -eq 7 ] && [ "$HOUR" -lt 6 ]; }; then
+            echo "$NOW — CLOSED FOR WEEKEND — emails paused." | tee -a "$LOGFILE"
+            exit 0
           else
-            # Pause from Friday 15:00 UTC through Monday 06:00 UTC
-            if { [ "$DAY" -eq 5 ] && [ "$HOUR" -ge 15 ]; } || \
-               [ "$DAY" -eq 6 ] || \
-               { [ "$DAY" -eq 7 ] && [ "$HOUR" -lt 6 ]; }; then
-              echo "$NOW — CLOSED FOR WEEKEND — non-DOM6027 emails paused." | tee -a "$LOGFILE"
-              exit 0
-            else
-              echo "$NOW — Normal weekday run — continuing." | tee -a "$LOGFILE"
-            fi
+            echo "$NOW — Normal weekday run — continuing." | tee -a "$LOGFILE"
           fi
 
       # -------------------------------------------------------------
