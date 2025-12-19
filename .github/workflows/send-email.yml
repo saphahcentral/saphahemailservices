@@ -1,10 +1,12 @@
 name: Saphahemailservices Automation
 
 on:
-  workflow_dispatch:        # Manual trigger
+  workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"     # Every hour
-    - cron: "0 22 * * *"    # Daily summary at 00:00 SAST (22:00 UTC)
+    - cron: "0 * * * *"   # Hourly – JS decides what actually runs
+
+permissions:
+  contents: write
 
 jobs:
   email-job:
@@ -18,51 +20,52 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------------------------------------------
-      # STEP 2 – SETUP NODE.JS ENVIRONMENT
+      # STEP 2 – SETUP NODE.JS
       # -------------------------------------------------------------
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
+          cache: "npm"
 
       # -------------------------------------------------------------
       # STEP 3 – INSTALL DEPENDENCIES
       # -------------------------------------------------------------
       - name: Install dependencies
-        run: |
-          npm ci || npm install
+        run: npm ci || npm install
 
       # -------------------------------------------------------------
-      # STEP 3B – WEEKEND PAUSE CHECK
+      # STEP 4 – WEEKEND PAUSE CHECK
       # -------------------------------------------------------------
       - name: Check for weekend pause
         run: |
           mkdir -p LOGS
           LOGFILE="LOGS/email_status.log"
+
           DAY=$(date -u +%u)
           HOUR=$(date -u +%H)
           NOW=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-          echo "UTC Day: $DAY | Hour: $H"
 
-          # Pause from Friday 15:00 UTC through Monday 06:00 UTC
+          echo "UTC Day: $DAY | Hour: $HOUR"
+
+          # Pause from Friday 15:00 UTC → Monday 06:00 UTC
           if { [ "$DAY" -eq 5 ] && [ "$HOUR" -ge 15 ]; } || \
              [ "$DAY" -eq 6 ] || \
              { [ "$DAY" -eq 7 ] && [ "$HOUR" -lt 6 ]; }; then
-            echo "$NOW — CLOSED FOR WEEKEND — emails paused." | tee -a "$LOGFILE"
+            echo "$NOW — CLOSED FOR WEEKEND — email sending paused." | tee -a "$LOGFILE"
             exit 0
-          else
-            echo "$NOW — Normal weekday run — continuing." | tee -a "$LOGFILE"
           fi
 
-      # -------------------------------------------------------------
-      # STEP 4 – ENSURE LOG/SENT/SCHEDULE DIRECTORIES EXIST
-      # -------------------------------------------------------------
-      - name: Ensure directories exist
-        run: |
-          mkdir -p LOGS SENT SCHEDULE
+          echo "$NOW — Normal run window — continuing." | tee -a "$LOGFILE"
 
       # -------------------------------------------------------------
-      # STEP 5 – RUN EMAIL SERVICE (Gmail OAuth2 + Firebase)
+      # STEP 5 – ENSURE REQUIRED DIRECTORIES
+      # -------------------------------------------------------------
+      - name: Ensure directories exist
+        run: mkdir -p LOGS SENT SCHEDULE
+
+      # -------------------------------------------------------------
+      # STEP 6 – RUN EMAIL SERVICE (GUARDED BY data.json)
       # -------------------------------------------------------------
       - name: Run Gmail email service
         env:
@@ -74,35 +77,13 @@ jobs:
         run: node email-send.js
 
       # -------------------------------------------------------------
-      # STEP 6 – COMMIT SENT EMAILS AND LOGS
+      # STEP 7 – COMMIT LOGS / SENT / data.json
       # -------------------------------------------------------------
-      - name: Commit sent emails + logs
+      - name: Commit state updates
         run: |
-          git config --local user.name "GitHub Action"
-          git config --local user.email "actions@github.com"
-          git add SENT LOGS || true
-          git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
-          git push origin main || true
+          git config user.name "GitHub Action"
+          git config user.email "actions@github.com"
 
-      # -------------------------------------------------------------
-      # STEP 7 – SEND DAILY SUMMARY
-      # -------------------------------------------------------------
-      - name: Send daily summary
-        if: github.event_name == 'schedule' && github.event.schedule == '0 22 * * *'
-        env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
-          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
-          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
-          EMAILFIREBASEADMIN: ${{ secrets.EMAILFIREBASEADMIN }}
-        run: |
-          SUMMARY="LOGS/email_status.log"
-          if [ -f "$SUMMARY" ]; then
-            SUBJECT="Daily Email Summary $(date +%Y-%m-%d)"
-            BODY="$(cat "$SUMMARY")"
-            RECIPIENT="${GMAIL_USER}"
-            echo "Sending daily summary to $RECIPIENT..."
-            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node email-send.js
-          else
-            echo "No log found for today. Skipping summary."
-          fi
+          git add SENT LOGS data.json || true
+          git commit -m "Update email logs and run state" || echo "No changes"
+          git push || true
