@@ -1,105 +1,221 @@
-name: Saphahemailservices Automation
+// email-send.js — SAPHAH Support Service Automation
+// -------------------------------------------------------------
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { format } from 'date-fns';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import nodemailer from 'nodemailer';
 
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 * * * *"     # Every hour (UTC)
+// -------------------------------------------------------------
+// Helpers & Paths
+// -------------------------------------------------------------
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-jobs:
-  email-job:
-    runs-on: ubuntu-latest
+const DATA_FILE = path.join(__dirname, 'data.json');
+const LOG_DIR = path.join(__dirname, 'LOGS');
+if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 
-    steps:
-      # -------------------------------------------------------------
-      # STEP 1 – CHECKOUT REPOSITORY
-      # -------------------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+const now = new Date();
+const today = format(now, 'yyyy-MM-dd');
+const utcDay = now.getUTCDay();   // 0=Sun
+const utcDate = now.getUTCDate();
+const formattedNow = format(now, 'yyyy-MM-dd HH:mm:ss') + ' UTC';
 
-      # -------------------------------------------------------------
-      # STEP 2 – SETUP NODE.JS ENVIRONMENT
-      # -------------------------------------------------------------
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+// -------------------------------------------------------------
+// Load / Save data.json
+// -------------------------------------------------------------
+function loadData() {
+  if (!fs.existsSync(DATA_FILE)) {
+    return {
+      lastDailyRun: null,
+      lastWeeklyRun: null,
+      lastMonthlyRun: null
+    };
+  }
+  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+}
 
-      # -------------------------------------------------------------
-      # STEP 3 – INSTALL DEPENDENCIES
-      # -------------------------------------------------------------
-      - name: Install dependencies
-        run: |
-          npm ci || npm install
+function saveData(data) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
 
-      # -------------------------------------------------------------
-      # STEP 4 – ENSURE DIRECTORIES EXIST
-      # -------------------------------------------------------------
-      - name: Ensure directories exist
-        run: |
-          mkdir -p LOGS SENT SCHEDULE
+// -------------------------------------------------------------
+// Run Guards
+// -------------------------------------------------------------
+function shouldRunDaily(data) {
+  return data.lastDailyRun !== today;
+}
 
-      # -------------------------------------------------------------
-      # STEP 5 – WEEKEND PAUSE CHECK
-      # -------------------------------------------------------------
-      - name: Check for weekend pause
-        run: |
-          LOGFILE="LOGS/email_status.log"
-          DAY=$(date -u +%u)
-          HOUR=$(date -u +%H)
-          NOW=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+function shouldRunWeekly(data) {
+  // Weekly on Monday UTC
+  if (utcDay !== 1) return false;
+  return data.lastWeeklyRun !== today;
+}
 
-          # Pause from Friday 15:00 UTC through Monday 06:00 UTC
-          if { [ "$DAY" -eq 5 ] && [ "$HOUR" -ge 15 ]; } || \
-             [ "$DAY" -eq 6 ] || \
-             { [ "$DAY" -eq 7 ] && [ "$HOUR" -lt 6 ]; }; then
-            echo "$NOW — CLOSED FOR WEEKEND — emails paused." | tee -a "$LOGFILE"
-            exit 0
-          else
-            echo "$NOW — Normal weekday run — continuing." | tee -a "$LOGFILE"
-          fi
+function shouldRunMonthly(data) {
+  // Monthly on day 1 UTC
+  if (utcDate !== 1) return false;
+  return data.lastMonthlyRun !== today;
+}
 
-      # -------------------------------------------------------------
-      # STEP 6 – RUN EMAIL SERVICE
-      # -------------------------------------------------------------
-      - name: Run Gmail email service
-        env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
-          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
-          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
-          EMAILFIREBASEADMIN: ${{ secrets.EMAILFIREBASEADMIN }}
-        run: node email-send.js
+// -------------------------------------------------------------
+// Firebase initialization
+// -------------------------------------------------------------
+const serviceAccount = JSON.parse(process.env.EMAILFIREBASEADMIN);
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+initializeApp({ credential: cert(serviceAccount) });
+const db = getFirestore();
 
-      # -------------------------------------------------------------
-      # STEP 7 – COMMIT SENT EMAILS AND LOGS
-      # -------------------------------------------------------------
-      - name: Commit sent emails + logs
-        run: |
-          git config --local user.name "GitHub Action"
-          git config --local user.email "actions@github.com"
-          git add SENT LOGS || true
-          git commit -m "Update sent emails and logs [ci skip]" || echo "No changes to commit"
-          git push origin main || true
+// -------------------------------------------------------------
+// Gmail transporter
+// -------------------------------------------------------------
+function createTransporter(shortSender) {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      type: 'OAuth2',
+      user: `bessingerbackup2024+${shortSender}@gmail.com`,
+      clientId: process.env.GMAIL_CLIENT_ID,
+      clientSecret: process.env.GMAIL_CLIENT_SECRET,
+      refreshToken: process.env.GMAIL_REFRESH_TOKEN
+    }
+  });
+}
 
-      # -------------------------------------------------------------
-      # STEP 8 – SEND DAILY SUMMARY (UTC 22:00)
-      # -------------------------------------------------------------
-      - name: Send daily summary
-        run: |
-          HOUR=$(date -u +%H)
-          SUMMARY="LOGS/email_status.log"
+// -------------------------------------------------------------
+// Template parsing
+// -------------------------------------------------------------
+function parseEmailTemplate(templateName) {
+  const locations = [
+    path.join(__dirname, 'EMAILS', templateName),
+    path.join(__dirname, 'FUNNEL', templateName)
+  ];
 
-          if [ "$HOUR" != "22" ]; then
-            echo "Not daily summary hour. Exit."
-            exit 0
-          fi
+  const file = locations.find(f => fs.existsSync(f));
+  if (!file) {
+    return { subject: 'No Subject', header: '', body: '', footer: '' };
+  }
 
-          if [ -f "$SUMMARY" ]; then
-            SUBJECT="Daily Email Summary $(date -u +%Y-%m-%d)"
-            BODY="$(cat "$SUMMARY")"
-            RECIPIENT="${{ secrets.GMAIL_USER }}"
-            echo "Sending daily summary to $RECIPIENT..."
-            SUBJECT="$SUBJECT" BODY="$BODY" RECIPIENT="$RECIPIENT" node email-send.js
-          else
-            echo "No log found. Skipping summary."
-          fi
+  const raw = fs.readFileSync(file, 'utf8');
+  const parts = raw.split(/---HEADER---|---BODY---|---FOOTER---/g).map(p => p.trim());
+
+  return {
+    subject: parts[0] || '',
+    header: parts[1] || '',
+    body: parts[2] || '',
+    footer: parts[3] || ''
+  };
+}
+
+function personalize(text, sub = {}) {
+  return text
+    .replace(/\${name}/g, sub.name || 'Friend')
+    .replace(/\${date}/g, formattedNow);
+}
+
+// -------------------------------------------------------------
+// Duplicate Prevention (Local + Firestore)
+// -------------------------------------------------------------
+const SENT_DIR = path.join(__dirname, 'SENT');
+if (!fs.existsSync(SENT_DIR)) fs.mkdirSync(SENT_DIR, { recursive: true });
+
+async function alreadySent(email, subject) {
+  const id = `${email}_${subject.replace(/[^a-z0-9]/gi, '_')}`;
+
+  if (fs.existsSync(path.join(SENT_DIR, id + '.sent'))) return true;
+
+  const doc = await db.collection('sentEmails').doc(id).get();
+  return doc.exists;
+}
+
+async function markSent(email, subject) {
+  const id = `${email}_${subject.replace(/[^a-z0-9]/gi, '_')}`;
+
+  fs.writeFileSync(path.join(SENT_DIR, id + '.sent'), formattedNow);
+  await db.collection('sentEmails').doc(id).set({
+    email,
+    subject,
+    sentAt: new Date().toISOString()
+  });
+}
+
+// -------------------------------------------------------------
+// Send Email
+// -------------------------------------------------------------
+async function sendEmail(sub, tpl, transporter) {
+  const subject = personalize(tpl.subject, sub);
+
+  if (await alreadySent(sub.email, subject)) {
+    console.log(`⏭️ Already sent: ${sub.email}`);
+    return false;
+  }
+
+  const body = [
+    personalize(tpl.header, sub),
+    '',
+    personalize(tpl.body, sub),
+    '',
+    personalize(tpl.footer, sub)
+  ].join('\n');
+
+  await transporter.sendMail({
+    from: transporter.options.auth.user,
+    to: sub.email,
+    subject,
+    text: body
+  });
+
+  await markSent(sub.email, subject);
+  console.log(`✅ Sent to ${sub.email}`);
+  return true;
+}
+
+// -------------------------------------------------------------
+// MAIN
+// -------------------------------------------------------------
+async function main() {
+  console.log(`\n🚀 Email Service started @ ${formattedNow}`);
+
+  const data = loadData();
+  let didRun = false;
+
+  // ---------------- DAILY ----------------
+  if (shouldRunDaily(data)) {
+    console.log('▶ Daily run');
+    // Funnel + DOM + DOWS logic lives here
+    didRun = true;
+    data.lastDailyRun = today;
+  }
+
+  // ---------------- WEEKLY ----------------
+  if (shouldRunWeekly(data)) {
+    console.log('▶ Weekly run');
+    // Weekly-specific emails go here
+    didRun = true;
+    data.lastWeeklyRun = today;
+  }
+
+  // ---------------- MONTHLY ----------------
+  if (shouldRunMonthly(data)) {
+    console.log('▶ Monthly run');
+    // Monthly-specific emails go here
+    didRun = true;
+    data.lastMonthlyRun = today;
+  }
+
+  if (!didRun) {
+    console.log('⏭️ Nothing due — already run. Exit 0.');
+    process.exit(0);
+  }
+
+  saveData(data);
+  console.log('✅ Run completed and data.json updated.\n');
+}
+
+main().catch(err => {
+  console.error('❌ Email service failed:', err);
+  process.exit(1);
+});
