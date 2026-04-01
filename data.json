@@ -1,13 +1,13 @@
 {
   "daily": {
-    "lastRun": "2026-03-31"
+    "lastRun": "2026-04-01"
   },
   "weekly": {
     "lastRun": "2026-03-30",
     "weekday": 0
   },
   "monthly": {
-    "lastRun": "2026-03-01",
+    "lastRun": "2026-04-01",
     "day": "last"
   }
 }
